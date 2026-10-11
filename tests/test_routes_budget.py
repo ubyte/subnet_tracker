@@ -14,8 +14,7 @@ def sites(*cidrs: str) -> World:
     w = World()
     for i, cidr in enumerate(cidrs):
         network = ip_network(cidr)
-        prefix = {"prefix_v4" if network.version == 4 else "prefix_v6": network.prefixlen}
-        w.site(f"d{i}.example", str(network.network_address), **prefix)
+        w.site(f"d{i}.example", str(network.network_address), prefix_v4=network.prefixlen, prefix_v6=network.prefixlen)
     return w
 
 

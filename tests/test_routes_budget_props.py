@@ -36,8 +36,8 @@ def cases(draw: st.DrawFn) -> Case:
     w = World()
     for i, (offset, prefix) in enumerate(draw(st.lists(st.tuples(offsets, st.integers(14, 32)), max_size=30))):
         w.site(f"d{i}.example", str(IPv4Address(BASE + offset)), prefix_v4=prefix)
-    for offset, prefix in draw(st.lists(st.tuples(offsets, st.integers(20, 28)), max_size=2, unique_by=lambda t: network(*t))):
-        w.global_route(str(network(offset, prefix)))
+    for net in sorted({network(o, p) for o, p in draw(st.lists(st.tuples(offsets, st.integers(20, 28)), max_size=2))}):
+        w.global_route(str(net))
     exclude = [network(o, p) for o, p in draw(st.lists(st.tuples(offsets, st.integers(16, 32)), max_size=4))]
     settings = PlanSettings(exclude=tuple(exclude), max_v4=draw(st.integers(0, 12)), min_aggregate_prefix_v4=draw(st.integers(12, 24)))
     raw = w.plan(PlanSettings(exclude=tuple(exclude), max_v4=10**6))
@@ -57,10 +57,8 @@ def globals_of(plan: RoutePlan) -> list[Route]:
 
 
 def top(net: IPNetwork, case: Case) -> IPNetwork:
-    for prefix in range(case.settings.min_aggregate_prefix_v4, net.prefixlen):
-        if not any((s := net.supernet(new_prefix=prefix)).overlaps(e) for e in case.exclude):
-            return s
-    return net
+    supernets = (net.supernet(new_prefix=prefix) for prefix in range(case.settings.min_aggregate_prefix_v4, net.prefixlen))
+    return next((s for s in supernets if not any(s.overlaps(e) for e in case.exclude)), net)
 
 
 def minimum(case: Case) -> int:
