@@ -75,12 +75,14 @@ def _field_changes(route: GlobalRoute, edit: GlobalRouteEdit, servers: Collectio
     return changes
 
 
-def add_route(conn: sqlite3.Connection, cidr: str, comment: str, group_names: Sequence[str], servers: Collection[IPAddress], actor: str, now: Timestamp) -> Recorded[GlobalRoute] | FieldError:
+def add_route(
+    conn: sqlite3.Connection, cidr: str, comment: str, group_names: Sequence[str], servers: Collection[IPAddress], actor: str, now: Timestamp, *, enabled: bool = True
+) -> Recorded[GlobalRoute] | FieldError:
     with transaction(conn):
         groups = _group_ids(conn, group_names)
         if isinstance(groups, FieldError):
             return groups
-        created = create_global_route(conn, NewGlobalRoute(cidr, comment, groups=groups), servers, now)
+        created = create_global_route(conn, NewGlobalRoute(cidr, comment, enabled, groups), servers, now)
         if isinstance(created, FieldError):
             return created
         applied = record_change(conn, [NewEvent(EventKind.ROUTE_ADDED, actor, details={**_identity(created), "groups": _names(conn, created.groups)})], now, apply=True)

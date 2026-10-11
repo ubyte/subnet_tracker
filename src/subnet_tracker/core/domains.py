@@ -75,6 +75,16 @@ def insert_domain(conn: sqlite3.Connection, names: DomainNames, source: DomainSo
     return domain_id
 
 
+# names_canonical and names_pair are partial unique indexes, and SQLite checks them row by row, so the two flags cannot be swapped in place.
+def flip_canonical(conn: sqlite3.Connection, domain_id: DomainId, now: Timestamp) -> None:
+    temp = DomainId(conn.execute("INSERT INTO domains (source, created_at, updated_at) VALUES (?, ?, ?) RETURNING id", (DomainSource.IMPORT, now, now)).fetchone()["id"])
+    conn.execute("UPDATE names SET domain_id = ?, canonical = 0 WHERE domain_id = ? AND canonical = 1", (temp, domain_id))
+    conn.execute("UPDATE names SET canonical = 1 WHERE domain_id = ? AND canonical = 0", (domain_id,))
+    conn.execute("UPDATE names SET domain_id = ?, canonical = 0 WHERE domain_id = ?", (domain_id, temp))
+    conn.execute("DELETE FROM domains WHERE id = ?", (temp,))
+    conn.execute("UPDATE domains SET updated_at = ? WHERE id = ?", (now, domain_id))
+
+
 def list_domains(conn: sqlite3.Connection, batch_id: BatchId | None = None) -> tuple[Domain, ...]:
     if batch_id is None:
         return _domains(conn.execute(_SELECT + _ORDER))
