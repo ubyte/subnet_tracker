@@ -1,16 +1,18 @@
-from ipaddress import ip_network
+from ipaddress import ip_address, ip_network
 
 import pytest
 
 from subnet_tracker.core.settings import SettingValue, parse_setting
 from subnet_tracker.textio.changes import Changes, Counts, ImportDiff, ImportMode, ImportSummary, SettingChange, Update, import_summary
 from subnet_tracker.textio.diff import import_diff
-from subnet_tracker.textio.model import DuplicateLine, ExportDomain, ExportFile, ExportGroup, ExportRoute, ExportSetting, ImportFile
+from subnet_tracker.textio.model import DuplicateLine, ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute, ExportSetting, ImportFile
 from subnet_tracker.textio.parse import parse_import
-from subnet_tracker.types import DomainName, ParseError
+from subnet_tracker.types import DomainName, ParseError, Timestamp
+from textio_apply import apply_diff, apply_domains
 
 MERGE, REPLACE = ImportMode.MERGE, ImportMode.REPLACE
 NET = ip_network("10.0.0.0/8")
+T0 = Timestamp(1791688800)
 
 
 def domain(name: str, **attrs: object) -> ExportDomain:
@@ -112,10 +114,21 @@ def test_replace_resets_missing_attributes_and_removes_everything_else() -> None
     )
 
 
-def test_replace_identifies_domains_by_canonical_name_only() -> None:
-    current = ExportFile(domains=(domain("example.com"),))
-    assert diff(current, "www.example.com\n", REPLACE) == ImportDiff(domains=Changes(added=(domain("www.example.com"),), removed=(domain("example.com"),)))
-    assert diff(current, "www.example.com\n", MERGE) == ImportDiff()
+def test_replace_flips_the_canonical_name_of_the_same_pair() -> None:
+    current = ExportFile(domains=(domain("example.com", tags=frozenset({"t"})),))
+    assert diff(current, "www.example.com\n", REPLACE) == ImportDiff(domains=Changes(updated=(Update(current.domains[0], domain("www.example.com")),)))
+    assert diff(current, "www.example.com #t\n", MERGE) == ImportDiff()
+
+
+def address(name: str) -> ExportAddress:
+    return ExportAddress(DomainName(name), ip_address("9.0.0.1"), "system", T0, T0)
+
+
+def test_replace_keeps_the_domain_id_and_addresses_when_the_canonical_name_flips() -> None:
+    current = ExportFile(domains=(domain("example.com"), domain("b.com")), addresses=(address("www.example.com"), address("example.com"), address("b.com")))
+    changes = diff(current, "www.example.com\nb.example\n", REPLACE)
+    assert apply_domains(dict(enumerate(current.domains, 1)), changes.domains) == {1: domain("www.example.com"), 3: domain("b.example")}
+    assert apply_diff(current, changes).addresses == (address("www.example.com"), address("example.com"))
 
 
 def test_merge_takes_the_first_of_lines_sharing_one_existing_domain() -> None:
@@ -162,6 +175,7 @@ def test_summary_counts_every_kind_of_change() -> None:
         domains=(domain("a.com"), domain("b.com"), domain("c.com")),
         routes=(ExportRoute(NET),),
     )
-    text = "[settings]\nresolve.interval = 3h\nbrowser.batch = 100\n\n[ungrouped]\na.com !disabled\nx.com\ny.com\nwww.y.com\n\n[routes]\n11.0.0.0/8 @A\n"
-    assert import_summary(diff(current, text, REPLACE)) == ImportSummary(settings=Counts(1, 1, 1), groups=Counts(0, 1, 1), domains=Counts(2, 1, 2), routes=Counts(1, 0, 1), duplicates=1)
-    assert import_summary(ImportDiff()) == ImportSummary(Counts(), Counts(), Counts(), Counts(), 0)
+    text = "[settings]\nresolve.interval = 3h\nbrowser.batch = 100\n\n[ungrouped]\na.com !disabled\nwww.c.com\nx.com\ny.com\nwww.y.com\n\n[routes]\n11.0.0.0/8 @A\n"
+    expected = ImportSummary(settings=Counts(1, 1, 1), groups=Counts(0, 1, 1), domains=Counts(2, 2, 1), canonical=1, routes=Counts(1, 0, 1), duplicates=1)
+    assert import_summary(diff(current, text, REPLACE)) == expected
+    assert import_summary(ImportDiff()) == ImportSummary(Counts(), Counts(), Counts(), 0, Counts(), 0)

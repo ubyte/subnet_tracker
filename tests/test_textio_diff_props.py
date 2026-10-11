@@ -7,7 +7,7 @@ from subnet_tracker.textio.diff import import_diff
 from subnet_tracker.textio.export import render_export
 from subnet_tracker.textio.model import ExportFile, ImportFile
 from subnet_tracker.textio.parse import parse_import
-from textio_apply import apply_diff
+from textio_apply import apply_diff, apply_domains
 from textio_strategies import related_states, stored_states
 
 
@@ -36,11 +36,16 @@ def _source_and_current(draw: st.DrawFn) -> tuple[ExportFile, ExportFile]:
 
 
 @given(_source_and_current())
-def test_replace_with_an_export_gives_the_same_export(states: tuple[ExportFile, ExportFile]) -> None:
+def test_replace_with_an_export_gives_the_same_export_and_keeps_domains_of_the_same_pair(states: tuple[ExportFile, ExportFile]) -> None:
     source, current = states
-    replaced = apply_diff(current, _diff(current, _file(source), ImportMode.REPLACE))
+    diff = _diff(current, _file(source), ImportMode.REPLACE)
+    replaced = apply_diff(current, diff)
     assert _text(replaced) == _text(source)
     assert _diff(replaced, _file(source), ImportMode.MERGE) == ImportDiff()
+    pairs = {frozenset(domain_names(d.name).all) for d in source.domains}
+    before = dict(enumerate(current.domains, 1))
+    after = apply_domains(before, diff.domains)
+    assert all(i in after for i, d in before.items() if frozenset(domain_names(d.name).all) in pairs)
 
 
 @given(stored_states())
