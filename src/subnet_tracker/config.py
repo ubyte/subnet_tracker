@@ -150,7 +150,11 @@ def parse_endpoint(text: str) -> Endpoint:
 
 def parse_https_url(text: str) -> str:
     url = urlsplit(text)
-    if url.scheme != "https" or not url.hostname:
+    try:
+        valid = url.scheme == "https" and bool(url.hostname) and url.port != 0
+    except ValueError:
+        valid = False
+    if not valid:
         raise ValueError(f"invalid endpoint {text!r}, expected an https:// URL")
     return text
 
