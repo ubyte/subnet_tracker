@@ -51,8 +51,13 @@ def no_terminal(prompt: str) -> bool | None:
     return None
 
 
+def fail_sleep(seconds: int) -> None:
+    raise AssertionError(f"tick slept {seconds}s")
+
+
 def make_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Cli:
-    return Cli(write_config(tmp_path / "config.toml", tmp_path / "state.db"), Runtime(tmp_path / "trigger", lambda: NOW, lambda: USER, no_stdin, no_terminal), capsys)
+    runtime = Runtime(tmp_path / "trigger", lambda: NOW, lambda: USER, no_stdin, no_terminal, fail_sleep, tmp_path / "tick.lock")
+    return Cli(write_config(tmp_path / "config.toml", tmp_path / "state.db"), runtime, capsys)
 
 
 def reading(cli: Cli, text: str) -> Cli:

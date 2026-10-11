@@ -6,14 +6,14 @@ from contextlib import closing
 from pathlib import Path
 
 from subnet_tracker.cli.command import Commands, Context, Runtime, cli_actor
-from subnet_tracker.cli.commands import add, batch, db, domain, group, resolver, route, settings, tag
+from subnet_tracker.cli.commands import add, batch, db, domain, group, resolver, route, settings, tag, tick
 from subnet_tracker.cli.output import PROG, Done, ExitCode, Failed, Outcome, render, warning
 from subnet_tracker.config import CONFIG_FILE, Config, ConfigError, load_config
 from subnet_tracker.core.db import MigrationError, connect, load_migrations, pending_migrations, schema_version
 from subnet_tracker.core.settings import SettingsError
 from subnet_tracker.core.trigger import notify_tick
 
-COMMANDS: tuple[Callable[[Commands], None], ...] = (add.register, domain.register, group.register, tag.register, route.register, resolver.register, batch.register, settings.register, db.register)
+COMMANDS: tuple[Callable[[Commands], None], ...] = (add.register, domain.register, group.register, tag.register, route.register, resolver.register, batch.register, settings.register, db.register, tick.register)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,7 +39,7 @@ def _execute(config: Config, args: argparse.Namespace, runtime: Runtime) -> tupl
         if args.requires_schema and (error := schema_error(config.db, schema_version(conn))):
             return Failed(ExitCode.ERROR, (error,)), None
         now, actor = runtime.clock(), cli_actor(runtime.user())
-        outcome: Outcome = args.run(Context(config, conn, now, actor, runtime.stdin, runtime.confirm), args)
+        outcome: Outcome = args.run(Context(config, conn, now, actor, runtime.stdin, runtime.confirm, runtime.clock, runtime.sleep, runtime.lock_file), args)
         notified = notify_tick(conn, now, actor, runtime.trigger_file) if isinstance(outcome, Done) and outcome.notify else None
     return outcome, notified
 

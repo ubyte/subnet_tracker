@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
-from subnet_tracker.tick import POLL_SECONDS, RESOLVE_PORTION, TICK_LOCK, WAIT_LIMIT, ApplyKind, Portion, ReconnectState, ResolveRequest, TickBusy, TickReport, apply_mode, reconnect_due_at, run_tick
 
 from cli_world import Cli, Result
 from db_rows import ROWS, insert
@@ -17,6 +16,7 @@ from subnet_tracker.cli.command import Runtime
 from subnet_tracker.core.requests import Apply, Claim, ResolveAll, ResolveDomains, enqueue
 from subnet_tracker.core.settings import ApplySettings
 from subnet_tracker.core.settings_store import set_setting
+from subnet_tracker.tick import POLL_SECONDS, RESOLVE_PORTION, TICK_LOCK, WAIT_LIMIT, ApplyKind, Portion, ReconnectState, ResolveRequest, TickBusy, TickReport, apply_mode, reconnect_due_at, run_tick
 from subnet_tracker.types import DomainId, PendingReconnect, ReconnectMode, ResolveTrigger, Seconds, Timestamp
 
 NOW = Timestamp(1_000_000)
@@ -397,9 +397,9 @@ def test_history_is_pruned_on_the_retention_boundary(db: sqlite3.Connection, tmp
     insert(db, "events", {"ts": cutoff, "kind": "domain.added", "actor": "tick"})
     report = tick(db, tmp_path, Steps(), at(NOW))
     assert (report.resolve_runs_pruned, report.apply_runs_pruned, report.events_pruned) == (1, 1, 1)
-    assert db.execute("SELECT id FROM resolve_runs").fetchall() == [(kept_run,)]
-    assert db.execute("SELECT id FROM apply_runs").fetchall() == [(kept_apply,)]
-    assert db.execute("SELECT ts FROM events").fetchall() == [(cutoff,)]
+    assert [tuple(row) for row in db.execute("SELECT id FROM resolve_runs")] == [(kept_run,)]
+    assert [tuple(row) for row in db.execute("SELECT id FROM apply_runs")] == [(kept_apply,)]
+    assert [tuple(row) for row in db.execute("SELECT ts FROM events")] == [(cutoff,)]
 
 
 def test_tick_command_does_not_write_the_trigger(cli: Cli, db: sqlite3.Connection, tmp_path: Path) -> None:
