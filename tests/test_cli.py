@@ -1,3 +1,4 @@
+import io
 import os
 import pwd
 import sqlite3
@@ -56,6 +57,29 @@ def test_sudo_caller_is_ignored_for_other_uids() -> None:
     if someone is None:
         pytest.skip("no passwd entry besides root")
     assert unix_user(someone.pw_uid, {"SUDO_USER": "alice"}) == someone.pw_name
+
+
+def test_default_stdin_is_the_process_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO("a.com\n"))
+    assert Runtime().stdin() == "a.com\n"
+
+
+def test_default_confirmation_needs_a_terminal(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO("yes\n"))
+    assert Runtime().confirm("delete a.com?") is None
+    assert capsys.readouterr().err == ""
+
+
+class Terminal(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+@pytest.mark.parametrize(("answer", "confirmed"), [("y\n", True), (" YES \n", True), ("\n", False), ("no\n", False), ("", False)])
+def test_default_confirmation_asks_on_stderr(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], answer: str, confirmed: bool) -> None:
+    monkeypatch.setattr(sys, "stdin", Terminal(answer))
+    assert Runtime().confirm("delete a.com?") is confirmed
+    assert capsys.readouterr().err == "delete a.com? [y/N] "
 
 
 def test_uid_without_passwd_entry_is_the_number(monkeypatch: pytest.MonkeyPatch) -> None:
