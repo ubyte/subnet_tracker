@@ -38,18 +38,22 @@ def _changes[K: str | _RouteKey, T](current: Mapping[K, T], target: Mapping[K, T
 
 
 def _domains(current: Iterable[ExportDomain], lines: Iterable[DomainLine], mode: ImportMode) -> tuple[dict[DomainName, ExportDomain], list[DuplicateLine]]:
-    # merge finds the stored domain by either name (9.4); replace only by the canonical name, which is immutable
-    owners = {n: d for d in current for n in (domain_names(d.name).all if mode is ImportMode.MERGE else ())}
+    # merge finds the stored domain by either name (9.4) and keeps its canonical name; replace needs both names and takes the canonical one from the file
+    owners = {n: d for d in current for n in domain_names(d.name).all}
     targets: dict[DomainName, ExportDomain] = {}
     first_lines: dict[DomainName, int] = {}
     duplicates = []
     for line in lines:
-        base = next((owners[n] for n in domain_names(line.name).all if n in owners), ExportDomain(line.name))
-        if first := first_lines.get(base.name):
+        names = domain_names(line.name).all
+        stored = next((owners[n] for n in names if n in owners), None)
+        if stored is not None and mode is ImportMode.REPLACE and set(domain_names(stored.name).all) != set(names):
+            stored = None
+        key = line.name if stored is None else stored.name
+        if first := first_lines.get(key):
             duplicates.append(DuplicateLine(line.line, line.name, first))
         else:
-            first_lines[base.name] = line.line
-            targets[base.name] = _domain(base, line)
+            first_lines[key] = line.line
+            targets[key] = _domain(stored if stored is not None and mode is ImportMode.MERGE else ExportDomain(line.name), line)
     return targets, duplicates
 
 

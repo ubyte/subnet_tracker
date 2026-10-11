@@ -47,6 +47,7 @@ class SettingChange:
 class ImportDiff:
     settings: tuple[SettingChange, ...] = ()
     groups: Changes[ExportGroup] = field(default_factory=Changes)
+    # an update with another name keeps both names of the domain and flips names.canonical
     domains: Changes[ExportDomain] = field(default_factory=Changes)
     routes: Changes[ExportRoute] = field(default_factory=Changes)
     duplicates: tuple[DuplicateLine, ...] = ()
@@ -57,6 +58,8 @@ class ImportSummary:
     settings: Counts
     groups: Counts
     domains: Counts
+    # domain updates that flip the canonical name
+    canonical: int
     routes: Counts
     duplicates: int
 
@@ -68,4 +71,5 @@ def _setting_counts(changes: tuple[SettingChange, ...]) -> Counts:
 
 
 def import_summary(diff: ImportDiff) -> ImportSummary:
-    return ImportSummary(_setting_counts(diff.settings), diff.groups.counts, diff.domains.counts, diff.routes.counts, len(diff.duplicates))
+    canonical = sum(u.old.name != u.new.name for u in diff.domains.updated)
+    return ImportSummary(_setting_counts(diff.settings), diff.groups.counts, diff.domains.counts, canonical, diff.routes.counts, len(diff.duplicates))
