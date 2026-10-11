@@ -48,6 +48,13 @@ def test_ip_range_contains_bounds() -> None:
     assert ip_address("::ffff:10.8.0.5") not in r
 
 
+def test_ipv6_range_contains() -> None:
+    r = parse_ip_range("fd00::2-fd00::9")
+    assert ip_address("fd00::5") in r
+    assert ip_address("fd00::a") not in r
+    assert ip_address("10.8.0.5") not in r
+
+
 def test_parse_result_ok() -> None:
     assert ParseResult(value=1).ok
     assert not ParseResult(value=1, errors=(ParseError(line=3, message="bad"),)).ok

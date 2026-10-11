@@ -85,7 +85,7 @@ def test_endpoint_str() -> None:
     ],
 )
 def test_unknown_key_is_error(text: str, where: str) -> None:
-    with pytest.raises(ConfigError, match=rf"{re.escape(where)}.*unknown"):
+    with pytest.raises(ConfigError, match=rf"^{re.escape(where)}: unknown"):
         parse_text(text)
 
 
@@ -95,27 +95,28 @@ def test_unknown_key_is_error(text: str, where: str) -> None:
         ("db = 5", "db"),
         ('db = ""', "db"),
         ("[web]\nbind = '10.8.0.1:80'", "web.bind"),
-        ("[web]\nbind = ['10.8.0.1']", r"web.bind\[0\]"),
-        ("[web]\nbind = ['10.8.0.1:0']", r"web.bind\[0\]"),
-        ("[web]\nbind = ['::1:80']", r"web.bind\[0\]"),
-        ("[web]\nbind = ['host:80']", r"web.bind\[0\]"),
-        ("[web]\ntrusted_networks = ['10.8.0.9-10.8.0.2']", r"web.trusted_networks\[0\]"),
-        ("[web]\ntrusted_networks = ['10.8.0.1-::1']", r"web.trusted_networks\[0\]"),
+        ("[web]\nbind = ['10.8.0.1']", "web.bind[0]"),
+        ("[web]\nbind = ['10.8.0.1:0']", "web.bind[0]"),
+        ("[web]\nbind = ['::1:80']", "web.bind[0]"),
+        ("[web]\nbind = ['host:80']", "web.bind[0]"),
+        ("[web]\ntrusted_networks = ['10.8.0.9-10.8.0.2']", "web.trusted_networks[0]"),
+        ("[web]\ntrusted_networks = ['10.8.0.1-::1']", "web.trusted_networks[0]"),
         ("[web]\nremember_for = 365", "web.remember_for"),
         ("[web]\nremember_for = '1y'", "web.remember_for"),
-        ("[agent_api]\nendpoints = ['http://10.8.0.1:8443']", r"agent_api.endpoints\[0\]"),
-        ("[routes]\nserver_addresses = ['10.0.0.0/8']", r"routes.server_addresses\[0\]"),
-        ("[routes]\ntunnel_networks = ['10.8.0.1/24']", r"routes.tunnel_networks\[0\]"),
+        ("[agent_api]\nendpoints = ['http://10.8.0.1:8443']", "agent_api.endpoints[0]"),
+        ("[agent_api]\nendpoints = ['https://10.8.0.1:99999']", "agent_api.endpoints[0]"),
+        ("[routes]\nserver_addresses = ['10.0.0.0/8']", "routes.server_addresses[0]"),
+        ("[routes]\ntunnel_networks = ['10.8.0.1/24']", "routes.tunnel_networks[0]"),
         ("web = 1", "web"),
-        ("[[openvpn]]\nname = 'a'", r"openvpn\[0\].management"),
-        ("[[openvpn]]\nname = 'a'\nmanagement = '/run/a.sock'", r"openvpn\[0\].management"),
-        ("[[openvpn]]\nname = 'a'\nmanagement = 'unix:a.sock'", r"openvpn\[0\].management"),
-        ("[[openvpn]]\nname = 'a'\nmanagement = 'unix:/a'\n[[openvpn]]\nname = 'a'\nmanagement = 'unix:/b'", r"openvpn\[1\].name"),
-        ("[[openvpn]]\nname = ''\nmanagement = 'unix:/a'", r"openvpn\[0\].name"),
+        ("[[openvpn]]\nname = 'a'", "openvpn[0].management"),
+        ("[[openvpn]]\nname = 'a'\nmanagement = '/run/a.sock'", "openvpn[0].management"),
+        ("[[openvpn]]\nname = 'a'\nmanagement = 'unix:a.sock'", "openvpn[0].management"),
+        ("[[openvpn]]\nname = 'a'\nmanagement = 'unix:/a'\n[[openvpn]]\nname = 'a'\nmanagement = 'unix:/b'", "openvpn[1].name"),
+        ("[[openvpn]]\nname = ''\nmanagement = 'unix:/a'", "openvpn[0].name"),
     ],
 )
 def test_bad_value_is_error(text: str, where: str) -> None:
-    with pytest.raises(ConfigError, match=where):
+    with pytest.raises(ConfigError, match=rf"^{re.escape(where)}: "):
         parse_text(text)
 
 
