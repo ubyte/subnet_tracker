@@ -38,7 +38,7 @@ class _Host:
 
 def normalize_name(host: str) -> DomainName | Rejected:
     try:
-        name = DomainName(idna.encode(host.removesuffix("."), uts46=True).decode("ascii"))
+        name = DomainName(idna.encode(host, uts46=True).decode("ascii").removesuffix("."))
     except idna.IDNAError as e:
         return Rejected(str(e))
     labels = name.split(".")
@@ -58,6 +58,10 @@ def _network(text: str) -> Network | None:
         return None
 
 
+def _routable(net: Network) -> Network | Rejected:
+    return Rejected("zone index is not routable") if isinstance(net, IPv6Network) and net.network_address.scope_id else net
+
+
 def _hostname(token: str) -> str | None:
     try:
         return urlsplit(token if _SCHEME.match(token) else "//" + token.removeprefix("//")).hostname
@@ -67,14 +71,14 @@ def _hostname(token: str) -> str | None:
 
 def _classify(token: str) -> _Host | Network | Rejected:
     if (net := _network(token)) is not None:
-        return net
+        return _routable(net)
     address, _, prefix = token.partition("/")
     if prefix.isdigit() and _network(address) is not None:
         return Rejected("invalid prefix length")
     if not (host := _hostname(token)):
         return Rejected("no host")
     if (net := _network(host)) is not None:
-        return net
+        return _routable(net)
     name = normalize_name(host.removeprefix(WILDCARD))
     return name if isinstance(name, Rejected) else _Host(name, host.startswith(WILDCARD))
 
