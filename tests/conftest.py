@@ -26,3 +26,9 @@ def db(tmp_path: Path) -> Iterator[sqlite3.Connection]:
 def seeded_db(db: sqlite3.Connection) -> sqlite3.Connection:
     seed(db)
     return db
+
+
+@pytest.fixture
+def other(db: sqlite3.Connection, tmp_path: Path) -> Iterator[sqlite3.Connection]:
+    with closing(connect(tmp_path / "state.db")) as conn:
+        yield conn

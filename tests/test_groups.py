@@ -2,6 +2,7 @@ import sqlite3
 
 import pytest
 
+from db_rows import write_locked
 from domains_world import NOW, count, paste
 from groups_world import domain, domain_ids, group_ids, group_names, join, make_group, route
 from subnet_tracker.core.db import transaction
@@ -173,6 +174,12 @@ def test_list_groups_starts_with_no_group(db: sqlite3.Connection) -> None:
     paste(db, "a.com b.com c.com")
     route(db, "192.0.2.0/24")
     assert list_groups(db) == (GroupRow(None, 3, 1),)
+
+
+def test_list_groups_reads_while_another_connection_writes(db: sqlite3.Connection, other: sqlite3.Connection) -> None:
+    video = make_group(db, "Video")
+    with write_locked(db, other):
+        assert list_groups(db) == (GroupRow(None, 0, 0), GroupRow(video, 0, 0))
 
 
 def test_list_groups_counts_domains_and_routes_by_name(db: sqlite3.Connection) -> None:

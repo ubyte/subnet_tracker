@@ -1,5 +1,6 @@
 import sqlite3
 
+from db_rows import write_locked
 from domains_world import NOW
 from groups_world import domain_ids, group_ids, join, make_group
 from subnet_tracker.core.domains import DomainEdit, edit_domains
@@ -17,6 +18,12 @@ def test_routing_snapshot_of_domains_and_groups(db: sqlite3.Connection) -> None:
     edit_domains(db, [b], DomainEdit(prefix_v4=20, prefix_v6=36, enabled=False), NOW)
     assert routing_groups(db) == (Group(video.id, True, 24, None), Group(off.id, False, None, 40))
     assert routing_domains(db) == (Domain(a, True, group_ids(video, off)), Domain(b, False, frozenset(), 20, 36))
+
+
+def test_routable_domains_read_while_another_connection_writes(db: sqlite3.Connection, other: sqlite3.Connection) -> None:
+    (a,) = domain_ids(db, "a.com")
+    with write_locked(db, other):
+        assert routable_domains(db) == {a}
 
 
 def test_domain_without_groups_is_routed_unless_disabled(db: sqlite3.Connection) -> None:
