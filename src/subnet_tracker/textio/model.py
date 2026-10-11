@@ -4,6 +4,10 @@ from subnet_tracker.discovery.parse import Network
 from subnet_tracker.types import DomainName, IPAddress, Timestamp
 
 
+def network_order(net: Network) -> tuple[int, int, int]:
+    return net.version, int(net.network_address), net.prefixlen
+
+
 @dataclass(frozen=True, slots=True)
 class SettingLine:
     line: int
