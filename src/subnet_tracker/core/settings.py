@@ -163,6 +163,15 @@ class SettingState:
 
 
 @dataclass(frozen=True, slots=True)
+class SettingUpdate:
+    new: SettingValue
+    # the value in effect before, None when the stored one is invalid
+    old: str | None
+    # False when the settings row stays as it is
+    changed: bool
+
+
+@dataclass(frozen=True, slots=True)
 class Setting[T]:
     section: str
     name: str
@@ -260,3 +269,24 @@ def setting_state(key: str, stored: StoredSetting | None) -> SettingState | Sett
     if (setting := _REGISTRY.get(key)) is None:
         return _unknown(key)
     return _state(setting, stored)
+
+
+def _update[T](setting: Setting[T], stored: StoredSetting | None, text: str | None) -> SettingUpdate | SettingError:
+    new = setting.default if text is None else setting.parse(text)
+    if isinstance(new, SettingError):
+        return new
+    value = _value(setting, new)
+    if stored is None:
+        return SettingUpdate(value, setting.format(setting.default), not value.is_default)
+    old = setting.decode(stored.value)
+    if isinstance(old, SettingError):
+        return SettingUpdate(value, None, True)
+    old_text = setting.format(old)
+    return SettingUpdate(value, old_text, value.is_default or old_text != value.text)
+
+
+# text None resets the setting to its default
+def setting_update(key: str, stored: StoredSetting | None, text: str | None) -> SettingUpdate | SettingError:
+    if (setting := _REGISTRY.get(key)) is None:
+        return _unknown(key)
+    return _update(setting, stored, text)
