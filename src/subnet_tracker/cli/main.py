@@ -39,7 +39,7 @@ def _execute(config: Config, args: argparse.Namespace, runtime: Runtime) -> tupl
         if args.requires_schema and (error := schema_error(config.db, schema_version(conn))):
             return Failed(ExitCode.ERROR, (error,)), None
         now, actor = runtime.clock(), cli_actor(runtime.user())
-        outcome: Outcome = args.run(Context(config, conn, now, actor), args)
+        outcome: Outcome = args.run(Context(config, conn, now, actor, runtime.stdin, runtime.confirm), args)
         notified = notify_tick(conn, now, actor, runtime.trigger_file) if isinstance(outcome, Done) and outcome.notify else None
     return outcome, notified
 
