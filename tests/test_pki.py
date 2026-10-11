@@ -6,16 +6,16 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-import subnet_tracker.pki.ca as pki_ca
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+
+import subnet_tracker.pki.ca as pki_ca
+from db_rows import insert
 from subnet_tracker.pki.ca import CERT_LIFETIME, PkiError, init_pki, load_pki
 from subnet_tracker.pki.issue import ClientCertificate, issue_client
-
-from db_rows import insert
 from subnet_tracker.types import FieldError, Timestamp
 
 NOW = Timestamp(1_760_000_000)
@@ -356,7 +356,7 @@ def test_issue_client_certificate(authority: pki_ca.Authority, tmp_path: Path) -
     assert peer_sha256(authority.context, cert_path, key_path) == credential.cert_sha256
 
 
-@pytest.mark.parametrize("name", ["laptop-alex", "a" * 64, "я" * 64])
+@pytest.mark.parametrize("name", ["laptop-alex", "a" * 64, "я" * 32])
 def test_client_common_name_is_the_agent_name(authority: pki_ca.Authority, name: str) -> None:
     assert common_name(load_cert(issued(authority, name).cert_pem)) == name
 
@@ -368,11 +368,13 @@ def test_issue_strips_surrounding_spaces(authority: pki_ca.Authority) -> None:
 @pytest.mark.parametrize(
     ("name", "message"),
     [
-        ("", "must be 1 to 64 characters long"),
-        (" ", "must be 1 to 64 characters long"),
-        ("a" * 65, "must be 1 to 64 characters long"),
-        ("a" * 100, "must be 1 to 64 characters long"),
-        ("я" * 65, "must be 1 to 64 characters long"),
+        ("", "must be 1 to 100 characters long"),
+        (" ", "must be 1 to 100 characters long"),
+        ("a" * 101, "must be 1 to 100 characters long"),
+        ("a" * 65, "must be at most 64 UTF-8 bytes"),
+        ("a" * 100, "must be at most 64 UTF-8 bytes"),
+        ("я" * 33, "must be at most 64 UTF-8 bytes"),
+        ("я" * 64, "must be at most 64 UTF-8 bytes"),
         ("lap\ntop", "line breaks are not allowed"),
     ],
 )
