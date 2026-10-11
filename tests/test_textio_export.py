@@ -9,14 +9,11 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from subnet_tracker.core.settings import SettingValue, parse_setting
-from subnet_tracker.discovery.parse import Network
-from subnet_tracker.discovery.www import domain_names
 from subnet_tracker.textio.export import LineBreaks, render_export
-from subnet_tracker.textio.lines import MAX_GROUP_NAME, MAX_TAG_NAME
 from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute, ExportSetting, ImportFile, SettingLine
 from subnet_tracker.textio.parse import parse_import
-from subnet_tracker.types import PREFIX_V4, PREFIX_V6, DomainName, Timestamp
-from textio_strategies import LINE_BREAKS, one_line_strings, trimmed_text
+from subnet_tracker.types import DomainName, Timestamp
+from textio_strategies import LINE_BREAKS, models
 
 HEADER = "# subnet-tracker export v1\n"
 T0 = Timestamp(1791688800)
@@ -150,48 +147,6 @@ def test_every_line_break_is_refused(brk: str) -> None:
 def test_all_fields_with_line_breaks_are_listed_in_order() -> None:
     model = ExportFile(groups=(ExportGroup("G", description="\n"),), domains=(domain("b.com", tags=frozenset({"y\n", "x\n"}), comment="\n"), domain("a.com", comment="\n")))
     assert render_export(model) == LineBreaks(("domain 'a.com' comment", "domain 'b.com' comment", "domain 'b.com' tag 'x\\n'", "domain 'b.com' tag 'y\\n'", "group 'G' description"))
-
-
-def _optional(allowed: range) -> st.SearchStrategy[int | None]:
-    return st.none() | st.integers(allowed.start, allowed.stop - 1)
-
-
-def _subsets(names: list[str]) -> st.SearchStrategy[frozenset[str]]:
-    return st.frozensets(st.sampled_from(names), max_size=3) if names else st.just(frozenset())
-
-
-def _distinct_pairs(domains: list[ExportDomain]) -> tuple[ExportDomain, ...]:
-    seen: set[DomainName] = set()
-    kept = []
-    for d in domains:
-        names = domain_names(d.name).all
-        if seen.isdisjoint(names):
-            kept.append(d)
-            seen.update(names)
-    return tuple(kept)
-
-
-def _network(address: st.SearchStrategy[str], bits: int) -> st.SearchStrategy[Network]:
-    return st.builds(lambda a, p: ip_network(f"{a}/{p}", strict=False), address, st.integers(0, bits))
-
-
-_labels = st.lists(st.from_regex(r"[a-z0-9]{1,8}", fullmatch=True), min_size=1, max_size=3)
-_domain_name = st.builds(lambda www, labels, tld: DomainName(www + ".".join([*labels, tld])), st.sampled_from(["", "www.", "www.www."]), _labels, st.from_regex(r"[a-z]{2,6}", fullmatch=True))
-_timestamps = st.integers(0, 2**33).map(Timestamp)
-_networks = _network(st.ip_addresses(v=4).map(str), 32) | _network(st.ip_addresses(v=6).map(str), 128)
-_settings = st.lists(st.builds(ExportSetting, st.from_regex(r"[a-z][a-z0-9_]{0,8}(\.[a-z0-9_]{1,8}){0,2}", fullmatch=True), trimmed_text()), max_size=3, unique_by=lambda s: s.key)
-_groups = st.lists(st.builds(ExportGroup, one_line_strings(1, MAX_GROUP_NAME), trimmed_text(), _optional(PREFIX_V4), _optional(PREFIX_V6), st.booleans()), max_size=4, unique_by=lambda g: g.name)
-_tags = st.frozensets(one_line_strings(1, MAX_TAG_NAME), max_size=3)
-_addresses = st.none() | st.lists(st.builds(ExportAddress, _domain_name, st.ip_addresses(), one_line_strings(1, 100), _timestamps, _timestamps), max_size=3).map(tuple)
-
-
-@st.composite
-def models(draw: st.DrawFn) -> ExportFile:
-    groups = draw(_groups)
-    in_groups = _subsets([g.name for g in groups])
-    domains = draw(st.lists(st.builds(ExportDomain, _domain_name, in_groups, _tags, _optional(PREFIX_V4), _optional(PREFIX_V6), st.booleans(), trimmed_text()), max_size=8).map(_distinct_pairs))
-    routes = draw(st.lists(st.builds(ExportRoute, _networks, in_groups, st.booleans(), trimmed_text()), max_size=4, unique_by=lambda r: r.network))
-    return ExportFile(tuple(draw(_settings)), tuple(groups), domains, tuple(routes), draw(_addresses))
 
 
 def _exported(parsed: ImportFile) -> ExportFile:
