@@ -47,6 +47,8 @@ class TickWork:
 class Claim:
     through: RequestId
     work: TickWork
+    # rows this version cannot decode, with the error; deleted with the rest so that they do not stop the queue
+    invalid: tuple[tuple[RequestId, str], ...] = ()
 
 
 def encode_request(request: Request) -> tuple[RequestKind, str]:
@@ -59,11 +61,17 @@ def encode_request(request: Request) -> tuple[RequestKind, str]:
             return RequestKind.APPLY, json.dumps({"reconnect": reconnect})
 
 
+def _domain_ids(raw: object) -> frozenset[DomainId]:
+    if not isinstance(raw, list) or not all(type(i) is int for i in raw):
+        raise ValueError(f"domain_ids must be a list of integers, got {raw!r}")
+    return frozenset(DomainId(i) for i in raw)
+
+
 def decode_request(kind: RequestKind, payload: str) -> Request:
     data = json.loads(payload)
     match kind:
         case RequestKind.RESOLVE_DOMAINS:
-            return ResolveDomains(frozenset(DomainId(i) for i in data["domain_ids"]), ResolveTrigger(data["trigger"]))
+            return ResolveDomains(_domain_ids(data["domain_ids"]), ResolveTrigger(data["trigger"]))
         case RequestKind.RESOLVE_ALL:
             return ResolveAll()
         case RequestKind.APPLY:
@@ -88,11 +96,20 @@ def enqueue(conn: sqlite3.Connection, requests: Iterable[Request], now: Timestam
         return tuple(RequestId(conn.execute("INSERT INTO requests (kind, payload, created_at) VALUES (?, ?, ?) RETURNING id", (*encode_request(r), now)).fetchone()["id"]) for r in requests)
 
 
+def _decoded_row(kind: str, payload: str) -> Request | str:
+    try:
+        return decode_request(RequestKind(kind), payload)
+    except (KeyError, TypeError, ValueError) as e:
+        return f"{kind} {payload}: {type(e).__name__}: {e}"
+
+
 def claim_requests(conn: sqlite3.Connection) -> Claim | None:
     rows = conn.execute("SELECT id, kind, payload FROM requests ORDER BY id").fetchall()
     if not rows:
         return None
-    return Claim(RequestId(rows[-1]["id"]), merge_requests([decode_request(RequestKind(row["kind"]), row["payload"]) for row in rows]))
+    decoded = [(RequestId(row["id"]), _decoded_row(row["kind"], row["payload"])) for row in rows]
+    invalid = tuple((request_id, error) for request_id, error in decoded if isinstance(error, str))
+    return Claim(decoded[-1][0], merge_requests([r for _, r in decoded if not isinstance(r, str)]), invalid)
 
 
 def finish_requests(conn: sqlite3.Connection, claim: Claim) -> int:

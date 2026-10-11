@@ -300,3 +300,4 @@ CREATE TABLE events (                       -- журнал изменений
   name      TEXT,                           -- имя, к которому относится событие (address.new и т.п.)
   details   TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(details))
 ) STRICT;
+CREATE INDEX events_domain ON events (domain_id, id);

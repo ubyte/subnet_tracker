@@ -468,6 +468,7 @@ CREATE TABLE events (                       -- журнал изменений
   name      TEXT,                           -- имя, к которому относится событие (address.new и т.п.)
   details   TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(details))
 ) STRICT;
+CREATE INDEX events_domain ON events (domain_id, id);
 ```
 
 `events.kind` намеренно не ограничен `CHECK`: набор событий растёт чаще схемы, а значения задаёт `StrEnum` в Python. Значение, которого нет в `StrEnum` (запись другой версии), читается как текст: история не должна ломаться.
