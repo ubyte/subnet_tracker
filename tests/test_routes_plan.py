@@ -148,6 +148,25 @@ def test_builtin_exclusion_drops_network(ip: str) -> None:
     assert str(warning.network) in warning.message
 
 
+@pytest.mark.parametrize("ip", ["::1", "::", "0.0.0.0", "127.0.0.1"])
+def test_answer_inside_builtin_exclusion_is_no_address(ip: str) -> None:
+    w = World()
+    w.site("example.com", ip, "1.2.3.4", "2001:db8:1::5")
+    plan = w.plan()
+    assert cidrs(plan) == ["1.2.2.0/23", "2001:db8:1::/48"]
+    assert (plan.stats.networks_v4, plan.stats.networks_v6) == (1, 1)
+    assert [a.ip for r in plan.routes for p in r.parts for a in p.addresses] == [ip_address("1.2.3.4"), ip_address("2001:db8:1::5")]
+    [warning] = plan.warnings
+    assert (warning.kind, warning.network, warning.exclusion.reason) == (WarningKind.EXCLUDED, ip_network(ip), ExclusionReason.BUILTIN)
+
+
+def test_answer_equal_to_server_address_still_trims() -> None:
+    w = World()
+    w.site("example.com", "1.2.3.4")
+    plan = w.plan(PlanSettings(server_addresses=(ip_address("1.2.3.4"),)))
+    assert cidrs(plan) == [str(n) for n in sorted(IPv4Network("1.2.2.0/23").address_exclude(IPv4Network("1.2.3.4/32")))]
+
+
 def test_server_address_trims_network() -> None:
     w = World()
     w.site("example.com", "1.2.3.4")
