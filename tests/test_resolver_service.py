@@ -20,8 +20,9 @@ def work(db: sqlite3.Connection) -> TickWork | None:
 
 
 def test_add_records_the_event_and_does_not_request_apply(db: sqlite3.Connection) -> None:
-    resolver = add_resolver(db, NewResolver(" Quad9 ", ResolverKind.DNS, " UDP://9.9.9.9 ", False, 20), ACTOR, NOW)
-    assert not isinstance(resolver, FieldError)
+    added = add_resolver(db, NewResolver(" Quad9 ", ResolverKind.DNS, " UDP://9.9.9.9 ", False, 20), ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    resolver = added.value
     assert (resolver.name, resolver.endpoint, resolver.use_for_routes, resolver.max_qps, resolver.position) == ("Quad9", "udp://9.9.9.9", False, 20, 0)
     (event,) = list_events(db, EventFilter(1))
     assert (event.kind, dict(event.details)) == (
@@ -37,8 +38,9 @@ def test_agent_kind_is_refused(db: sqlite3.Connection) -> None:
 
 
 def test_routes_flag_requests_apply_and_qps_does_not(db: sqlite3.Connection) -> None:
-    resolver = add_resolver(db, NewResolver("Quad9", ResolverKind.DNS, "udp://9.9.9.9"), ACTOR, NOW)
-    assert not isinstance(resolver, FieldError)
+    added = add_resolver(db, NewResolver("Quad9", ResolverKind.DNS, "udp://9.9.9.9"), ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    resolver = added.value
     qps = change_resolver(db, resolver.id, ResolverEdit(max_qps=10), ACTOR, LATER)
     assert not isinstance(qps, FieldError)
     assert qps.changes == {"max_qps": (50, 10)}
@@ -53,8 +55,9 @@ def test_routes_flag_requests_apply_and_qps_does_not(db: sqlite3.Connection) -> 
 
 
 def test_same_values_do_not_touch_the_row(db: sqlite3.Connection) -> None:
-    resolver = add_resolver(db, NewResolver("Quad9", ResolverKind.DNS, "udp://9.9.9.9"), ACTOR, NOW)
-    assert not isinstance(resolver, FieldError)
+    added = add_resolver(db, NewResolver("Quad9", ResolverKind.DNS, "udp://9.9.9.9"), ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    resolver = added.value
     updated = change_resolver(db, resolver.id, ResolverEdit(name=" Quad9 ", endpoint="udp://9.9.9.9", max_qps=50), ACTOR, LATER)
     assert not isinstance(updated, FieldError)
     assert updated.changes == {}
@@ -65,8 +68,9 @@ def test_same_values_do_not_touch_the_row(db: sqlite3.Connection) -> None:
 def test_delete_of_a_routing_resolver_requests_apply_and_counts_addresses(db: sqlite3.Connection) -> None:
     paste(db, "a.com")
     name_id = db.execute("SELECT id FROM names WHERE name = 'a.com'").fetchone()[0]
-    resolver = add_resolver(db, NewResolver("Quad9", ResolverKind.DNS, "udp://9.9.9.9"), ACTOR, NOW)
-    assert not isinstance(resolver, FieldError)
+    added = add_resolver(db, NewResolver("Quad9", ResolverKind.DNS, "udp://9.9.9.9"), ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    resolver = added.value
     address = insert(db, "addresses", {"name_id": name_id, "ip": "192.0.2.1", "family": 4, "ip_bin": bytes([192, 0, 2, 1])})
     insert(db, "sightings", {"address_id": address, "resolver_id": resolver.id, "first_seen_at": 0, "last_seen_at": 0})
     removed = remove_resolver(db, resolver.id, ACTOR, LATER)
@@ -79,8 +83,9 @@ def test_delete_of_a_routing_resolver_requests_apply_and_counts_addresses(db: sq
 
 
 def test_delete_of_a_resolver_kept_out_of_routes_does_not_request_apply(db: sqlite3.Connection) -> None:
-    resolver = add_resolver(db, NewResolver("Quad9", ResolverKind.DNS, "udp://9.9.9.9", use_for_routes=False), ACTOR, NOW)
-    assert not isinstance(resolver, FieldError)
+    added = add_resolver(db, NewResolver("Quad9", ResolverKind.DNS, "udp://9.9.9.9", use_for_routes=False), ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    resolver = added.value
     removed = remove_resolver(db, resolver.id, ACTOR, LATER)
     assert not isinstance(removed, FieldError)
     assert removed.addresses == 0

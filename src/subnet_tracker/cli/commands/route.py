@@ -40,7 +40,7 @@ def _add(ctx: Context, args: argparse.Namespace) -> Outcome:
     created = add_route(ctx.conn, args.cidr, args.comment, args.group, ctx.config.routes.server_addresses, ctx.actor, ctx.now)
     if isinstance(created, FieldError):
         return rejected(created)
-    return Done(f"added route {created.network}", route_json(ctx, created), notify=True)
+    return Done(f"added route {created.value.network}", route_json(ctx, created.value), notify=created.applied)
 
 
 def _edit(ctx: Context, args: argparse.Namespace) -> Outcome:
@@ -55,7 +55,7 @@ def _edit(ctx: Context, args: argparse.Namespace) -> Outcome:
     if isinstance(updated, FieldError):
         return rejected(updated)
     changes = {name: {"old": old, "new": new} for name, (old, new) in updated.changes.items()}
-    return Done(changed_line(str(updated.route.network), updated.changes), {"id": updated.route.id, "cidr": str(updated.route.network), "changes": changes}, notify=bool(updated.changes))
+    return Done(changed_line(str(updated.route.network), updated.changes), {"id": updated.route.id, "cidr": str(updated.route.network), "changes": changes}, notify=updated.applied)
 
 
 def _rm(ctx: Context, args: argparse.Namespace) -> Outcome:
@@ -65,7 +65,7 @@ def _rm(ctx: Context, args: argparse.Namespace) -> Outcome:
     removed = remove_route(ctx.conn, found.id, ctx.actor, ctx.now)
     if isinstance(removed, FieldError):
         return rejected(removed)
-    return Done(f"deleted route {removed.network}", {"id": removed.id, "cidr": str(removed.network)}, notify=True)
+    return Done(f"deleted route {removed.value.network}", {"id": removed.value.id, "cidr": str(removed.value.network)}, notify=removed.applied)
 
 
 def register(commands: Commands) -> None:

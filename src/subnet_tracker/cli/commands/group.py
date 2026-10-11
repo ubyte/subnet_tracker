@@ -87,7 +87,7 @@ def _add(ctx: Context, args: argparse.Namespace) -> Outcome:
     created = add_group(ctx.conn, NewGroup(args.name, args.description, args.prefix4, args.prefix6), ctx.actor, ctx.now)
     if isinstance(created, FieldError):
         return rejected(created)
-    return Done(f"added group {created.name}", stored_json(created), notify=True)
+    return Done(f"added group {created.value.name}", stored_json(created.value), notify=created.applied)
 
 
 def _edit(ctx: Context, args: argparse.Namespace) -> Outcome:
@@ -100,7 +100,7 @@ def _edit(ctx: Context, args: argparse.Namespace) -> Outcome:
     if isinstance(updated, FieldError):
         return rejected(updated)
     changes = {name: {"old": old, "new": new} for name, (old, new) in updated.changes.items()}
-    return Done(changed_line(updated.group.name, updated.changes), {"id": updated.group.id, "name": updated.group.name, "changes": changes}, notify=bool(updated.changes))
+    return Done(changed_line(updated.group.name, updated.changes), {"id": updated.group.id, "name": updated.group.name, "changes": changes}, notify=updated.applied)
 
 
 def _confirm(ctx: Context, group: Group, with_members: bool) -> Outcome | None:
@@ -123,7 +123,7 @@ def _rm(ctx: Context, args: argparse.Namespace) -> Outcome:
     removed = remove_group(ctx.conn, found.id, args.with_members, ctx.actor, ctx.now)
     if isinstance(removed, FieldError):
         return rejected(removed)
-    return Done(removal_text(removed), removal_json(removed), notify=True)
+    return Done(removal_text(removed), removal_json(removed), notify=removed.applied)
 
 
 def _prefixes(parser: argparse.ArgumentParser, prefix_type: Callable[[str], int | None], metavar: str) -> None:

@@ -24,8 +24,9 @@ def kinds(db: sqlite3.Connection) -> list[EventKind | str]:
 
 
 def test_add_group_records_the_event_and_does_not_request_apply(db: sqlite3.Connection) -> None:
-    group = add_group(db, NewGroup(" Video ", " hosting ", 24), ACTOR, NOW)
-    assert not isinstance(group, FieldError)
+    added = add_group(db, NewGroup(" Video ", " hosting ", 24), ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    group = added.value
     assert (group.name, group.description, group.prefix_v4, group.enabled) == ("Video", "hosting", 24, True)
     assert not db.in_transaction
     (event,) = list_events(db, EventFilter(1))

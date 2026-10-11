@@ -27,7 +27,7 @@ def _rename(ctx: Context, args: argparse.Namespace) -> Outcome:
     else:
         text = f"renamed tag {renamed.old} to {renamed.tag.name}"
     data: JsonValue = {"id": renamed.tag.id, "name": renamed.tag.name, "old": renamed.old, "merged": renamed.merged, "changed": renamed.changed}
-    return Done(text, data, notify=renamed.changed)
+    return Done(text, data, notify=renamed.applied)
 
 
 def _rm(ctx: Context, args: argparse.Namespace) -> Outcome:
@@ -37,7 +37,7 @@ def _rm(ctx: Context, args: argparse.Namespace) -> Outcome:
     removed = remove_tag(ctx.conn, found.id, ctx.actor, ctx.now)
     if isinstance(removed, FieldError):
         return rejected(removed)
-    return Done(f"deleted tag {removed.name}", {"id": removed.id, "name": removed.name}, notify=True)
+    return Done(f"deleted tag {removed.value.name}", {"id": removed.value.id, "name": removed.value.name}, notify=removed.applied)
 
 
 def register(commands: Commands) -> None:

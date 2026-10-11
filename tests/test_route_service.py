@@ -24,8 +24,9 @@ def work(db: sqlite3.Connection) -> TickWork | None:
 
 def test_add_normalizes_the_cidr_and_requests_apply(db: sqlite3.Connection) -> None:
     make_group(db, "Video")
-    route = add_route(db, " 192.0.2.7/24 ", " LAN ", ["Video"], NONE, ACTOR, NOW)
-    assert not isinstance(route, FieldError)
+    added = add_route(db, " 192.0.2.7/24 ", " LAN ", ["Video"], NONE, ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    route = added.value
     assert (str(route.network), route.comment, route.enabled) == ("192.0.2.0/24", "LAN", True)
     (event,) = list_events(db, EventFilter(1))
     assert event.kind is EventKind.ROUTE_ADDED
@@ -58,8 +59,9 @@ def test_duplicate_cidr_is_rejected_after_normalization(db: sqlite3.Connection) 
 
 
 def test_comment_edit_does_not_request_apply(db: sqlite3.Connection) -> None:
-    created = add_route(db, "192.0.2.0/24", "", [], NONE, ACTOR, NOW)
-    assert not isinstance(created, FieldError)
+    added = add_route(db, "192.0.2.0/24", "", [], NONE, ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    created = added.value
     assert count(db, "requests") == 1
     updated = change_route(db, created.id, RouteChange(GlobalRouteEdit(comment=" LAN ")), NONE, ACTOR, LATER)
     assert not isinstance(updated, FieldError)
@@ -69,8 +71,9 @@ def test_comment_edit_does_not_request_apply(db: sqlite3.Connection) -> None:
 
 
 def test_repeating_the_same_cidr_is_not_a_change_even_when_it_covers_a_server(db: sqlite3.Connection) -> None:
-    created = add_route(db, "192.0.2.0/24", "", [], NONE, ACTOR, NOW)
-    assert not isinstance(created, FieldError)
+    added = add_route(db, "192.0.2.0/24", "", [], NONE, ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    created = added.value
     servers = (ip_address("192.0.2.1"),)
     updated = change_route(db, created.id, RouteChange(GlobalRouteEdit(cidr="192.0.2.9/24")), servers, ACTOR, LATER)
     assert not isinstance(updated, FieldError)
@@ -83,8 +86,9 @@ def test_repeating_the_same_cidr_is_not_a_change_even_when_it_covers_a_server(db
 
 def test_group_edit_requests_apply(db: sqlite3.Connection) -> None:
     make_group(db, "Video")
-    created = add_route(db, "192.0.2.0/24", "", [], NONE, ACTOR, NOW)
-    assert not isinstance(created, FieldError)
+    added = add_route(db, "192.0.2.0/24", "", [], NONE, ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    created = added.value
     updated = change_route(db, created.id, RouteChange(add_groups=("Video",)), NONE, ACTOR, LATER)
     assert not isinstance(updated, FieldError)
     assert updated.changes == {"groups": ([], ["Video"])}
@@ -95,8 +99,9 @@ def test_group_edit_requests_apply(db: sqlite3.Connection) -> None:
 
 
 def test_delete_requests_apply(db: sqlite3.Connection) -> None:
-    created = add_route(db, "192.0.2.0/24", "", [], NONE, ACTOR, NOW)
-    assert not isinstance(created, FieldError)
+    added = add_route(db, "192.0.2.0/24", "", [], NONE, ACTOR, NOW)
+    assert not isinstance(added, FieldError)
+    created = added.value
     removed = remove_route(db, created.id, ACTOR, LATER)
     assert not isinstance(removed, FieldError)
     assert find_global_route(db, created.network) is None

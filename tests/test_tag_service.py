@@ -82,7 +82,7 @@ def test_delete_removes_the_tag_without_touching_domain_time(db: sqlite3.Connect
     a = assign(db, "a.com", video)
     removed = remove_tag(db, video, ACTOR, LATER)
     assert not isinstance(removed, FieldError)
-    assert removed.name == "video"
+    assert removed.value.name == "video"
     assert tag_names(db, a) == set()
     assert domain(db, "a.com").updated_at == NOW
     (event,) = list_events(db, EventFilter(1))

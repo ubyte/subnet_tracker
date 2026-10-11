@@ -41,7 +41,7 @@ def _add(ctx: Context, args: argparse.Namespace) -> Outcome:
     created = add_resolver(ctx.conn, NewResolver(args.name, args.kind, args.endpoint, args.use_for_routes, args.max_qps), ctx.actor, ctx.now)
     if isinstance(created, FieldError):
         return rejected(created)
-    return Done(f"added resolver {created.name}", resolver_json(created), notify=True)
+    return Done(f"added resolver {created.value.name}", resolver_json(created.value), notify=created.applied)
 
 
 def _edit(ctx: Context, args: argparse.Namespace) -> Outcome:
@@ -54,7 +54,7 @@ def _edit(ctx: Context, args: argparse.Namespace) -> Outcome:
     if isinstance(updated, FieldError):
         return rejected(updated)
     changes = {name: {"old": old, "new": new} for name, (old, new) in updated.changes.items()}
-    return Done(changed_line(updated.resolver.name, updated.changes), {"id": updated.resolver.id, "name": updated.resolver.name, "changes": changes}, notify=bool(updated.changes))
+    return Done(changed_line(updated.resolver.name, updated.changes), {"id": updated.resolver.id, "name": updated.resolver.name, "changes": changes}, notify=updated.applied)
 
 
 def _removed(name: str, addresses: int) -> str:
@@ -71,7 +71,7 @@ def _rm(ctx: Context, args: argparse.Namespace) -> Outcome:
     removed = remove_resolver(ctx.conn, found.id, ctx.actor, ctx.now)
     if isinstance(removed, FieldError):
         return rejected(removed)
-    return Done(_removed(removed.resolver.name, removed.addresses), {"id": removed.resolver.id, "name": removed.resolver.name, "addresses": removed.addresses}, notify=True)
+    return Done(_removed(removed.resolver.name, removed.addresses), {"id": removed.resolver.id, "name": removed.resolver.name, "addresses": removed.addresses}, notify=removed.applied)
 
 
 def _routes(parser: argparse.ArgumentParser) -> None:

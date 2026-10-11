@@ -19,7 +19,7 @@ from subnet_tracker.core.global_routes import (
 )
 from subnet_tracker.core.groups import find_group, get_group
 from subnet_tracker.core.memberships import SetChange
-from subnet_tracker.core.services.recording import Change, details_of, record_change
+from subnet_tracker.core.services.recording import Change, Recorded, details_of, record_change
 from subnet_tracker.types import FieldError, GlobalRouteId, GroupId, IPAddress, JsonValue, Timestamp, route_network
 
 # a comment does not change the plan
@@ -37,6 +37,7 @@ class RouteChange:
 class RouteUpdate:
     route: GlobalRoute
     changes: Mapping[str, Change]
+    applied: bool
 
 
 def lookup_route(conn: sqlite3.Connection, text: str) -> GlobalRoute | FieldError:
@@ -74,7 +75,7 @@ def _field_changes(route: GlobalRoute, edit: GlobalRouteEdit, servers: Collectio
     return changes
 
 
-def add_route(conn: sqlite3.Connection, cidr: str, comment: str, group_names: Sequence[str], servers: Collection[IPAddress], actor: str, now: Timestamp) -> GlobalRoute | FieldError:
+def add_route(conn: sqlite3.Connection, cidr: str, comment: str, group_names: Sequence[str], servers: Collection[IPAddress], actor: str, now: Timestamp) -> Recorded[GlobalRoute] | FieldError:
     with transaction(conn):
         groups = _group_ids(conn, group_names)
         if isinstance(groups, FieldError):
@@ -82,8 +83,8 @@ def add_route(conn: sqlite3.Connection, cidr: str, comment: str, group_names: Se
         created = create_global_route(conn, NewGlobalRoute(cidr, comment, groups=groups), servers, now)
         if isinstance(created, FieldError):
             return created
-        record_change(conn, [NewEvent(EventKind.ROUTE_ADDED, actor, details={**_identity(created), "groups": _names(conn, created.groups)})], now, apply=True)
-    return created
+        applied = record_change(conn, [NewEvent(EventKind.ROUTE_ADDED, actor, details={**_identity(created), "groups": _names(conn, created.groups)})], now, apply=True)
+    return Recorded(created, applied)
 
 
 def _identity(route: GlobalRoute) -> dict[str, JsonValue]:
@@ -109,7 +110,7 @@ def change_route(conn: sqlite3.Connection, route_id: GlobalRouteId, change: Rout
         if groups != route.groups:
             changes["groups"] = (_names(conn, route.groups), _names(conn, groups))
         if not changes:
-            return RouteUpdate(route, {})
+            return RouteUpdate(route, {}, False)
         edited = route
         if fields:
             result = edit_global_route(conn, route_id, change.edit, servers, now)
@@ -122,14 +123,14 @@ def change_route(conn: sqlite3.Connection, route_id: GlobalRouteId, change: Rout
             if refreshed is None:
                 return FieldError("cidr", "does not exist")
             edited = refreshed
-        record_change(conn, [NewEvent(EventKind.ROUTE_CHANGED, actor, details={"route_id": edited.id, **details_of(changes)})], now, apply=bool(_ROUTING.intersection(changes)))
-    return RouteUpdate(edited, changes)
+        applied = record_change(conn, [NewEvent(EventKind.ROUTE_CHANGED, actor, details={"route_id": edited.id, **details_of(changes)})], now, apply=bool(_ROUTING.intersection(changes)))
+    return RouteUpdate(edited, changes, applied)
 
 
-def remove_route(conn: sqlite3.Connection, route_id: GlobalRouteId, actor: str, now: Timestamp) -> GlobalRoute | FieldError:
+def remove_route(conn: sqlite3.Connection, route_id: GlobalRouteId, actor: str, now: Timestamp) -> Recorded[GlobalRoute] | FieldError:
     with transaction(conn):
         route = get_global_route(conn, route_id)
         if route is None or not delete_global_route(conn, route_id):
             return FieldError("cidr", "does not exist")
-        record_change(conn, [NewEvent(EventKind.ROUTE_DELETED, actor, details={"route_id": route.id, "cidr": str(route.network)})], now, apply=True)
-    return route
+        applied = record_change(conn, [NewEvent(EventKind.ROUTE_DELETED, actor, details={"route_id": route.id, "cidr": str(route.network)})], now, apply=True)
+    return Recorded(route, applied)
