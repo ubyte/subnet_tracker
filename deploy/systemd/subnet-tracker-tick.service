@@ -1,0 +1,11 @@
+# deploy/systemd/subnet-tracker-tick.service
+[Unit]
+Description=subnet-tracker tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=subnet-tracker
+Group=subnet-tracker
+ExecStart=/opt/subnet-tracker/bin/subnet-tracker tick

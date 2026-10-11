@@ -118,9 +118,59 @@ flowchart LR
 |---|---|
 | `subnet-tracker-web.service` | Web UI (waitress). Пользователь `subnet-tracker`. Прав на OpenVPN нет. `After=openvpn-server@server`, `Restart=on-failure`: адрес туннеля появляется только после старта OpenVPN. |
 | `subnet-tracker-agent-api.service` | Agent API (раздел 7.4). Пользователь `subnet-tracker`. Тот же порядок запуска. |
-| `subnet-tracker-tick.timer` | `OnCalendar=minutely`, запускает `tick.service`. |
-| `subnet-tracker-tick.service` | `Type=oneshot`, выполняет `subnet-tracker tick`. |
+| `subnet-tracker-tick.timer` | `OnCalendar=minutely`, `AccuracySec=1s`, запускает `tick.service`. |
+| `subnet-tracker-tick.service` | `Type=oneshot`, пользователь и группа `subnet-tracker`, выполняет `/opt/subnet-tracker/bin/subnet-tracker tick`. |
 | `subnet-tracker-tick.path` | `PathModified=/run/subnet-tracker/trigger`. Web, CLI и Agent API дописывают строку в этот файл, чтобы `tick` запустился сразу, не дожидаясь таймера. |
+
+Файлы лежат в `deploy/systemd/`. Сервис поднимают timer и path, поэтому секции `[Install]` у него нет. Второй экземпляр oneshot systemd не стартует (раздел 11).
+
+```ini
+# deploy/systemd/subnet-tracker-tick.service
+[Unit]
+Description=subnet-tracker tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=subnet-tracker
+Group=subnet-tracker
+ExecStart=/opt/subnet-tracker/bin/subnet-tracker tick
+```
+
+`ExecStart` — скрипт venv `/opt/subnet-tracker` (раздел 19): у systemd нет этого каталога в `PATH`. `After=network-online.target` — резолв ходит в сеть. `RuntimeDirectory=` не задаётся. У `Type=oneshot` такой каталог удаляется при выходе процесса, а `/run/subnet-tracker` должен переживать `tick`: в нём trigger-файл и management-сокет OpenVPN (раздел 3.1).
+
+```ini
+# deploy/systemd/subnet-tracker-tick.timer
+[Unit]
+Description=Run subnet-tracker tick every minute
+
+[Timer]
+OnCalendar=minutely
+AccuracySec=1s
+Unit=subnet-tracker-tick.service
+
+[Install]
+WantedBy=timers.target
+```
+
+`AccuracySec` по умолчанию равен минуте, и без явной секунды `OnCalendar=minutely` может сдвигаться на целую минуту. Ожидание 55 с внутри `tick` рассчитано на срабатывание около каждой минуты. `Persistent=` не ставится: минута, пропущенная на выключенной машине, не догоняется отдельно, следующая наступает сама.
+
+```ini
+# deploy/systemd/subnet-tracker-tick.path
+[Unit]
+Description=Wake subnet-tracker tick when the trigger file changes
+After=systemd-tmpfiles-setup.service
+
+[Path]
+PathModified=/run/subnet-tracker/trigger
+Unit=subnet-tracker-tick.service
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`PathModified` наблюдает уже существующий файл, поэтому path-юнит стартует после `systemd-tmpfiles-setup.service`.
 
 «Обновить адреса» и «обновить маршруты» — отдельные команды (`resolve`, `apply`), но по расписанию их последовательно запускает один `tick`. Так нет гонок и задержки между ними. Интервал резолва хранится в БД: таймер срабатывает раз в минуту, а `tick` сам решает, пора ли резолвить, поэтому интервал меняется из UI без правки unit-файлов.
 
@@ -155,7 +205,16 @@ Trigger-файл пишется после коммита транзакции �
 | `/opt/subnet-tracker/agent/` | root | Собранные бинарники `st-agent` и unit-файлы для скачивания из web UI. |
 | `/etc/openvpn/server/subnet-tracker/routes.conf` | `subnet-tracker`, 0644 | Сгенерированный файл маршрутов; рядом `routes.conf.prev`. Должен читаться `client-connect`-скриптом, который работает после сброса привилегий OpenVPN. |
 | `/usr/lib/subnet-tracker/ovpn-client-connect` | root | Дописывает `routes.conf` в `$1`. |
-| `/run/subnet-tracker/` | tmpfiles.d, 0770, группа `subnet-tracker` | `trigger`, `tick.lock`, management-сокет OpenVPN. OpenVPN создаёт сокет как root до сброса привилегий. `trigger` тоже создаёт tmpfiles.d (0660, группа `subnet-tracker`): в него дописывают и web, и CLI любого пользователя группы. |
+| `/run/subnet-tracker/` | tmpfiles.d, 0770, `subnet-tracker:subnet-tracker` | `trigger`, `tick.lock`, management-сокет OpenVPN. OpenVPN создаёт сокет как root до сброса привилегий. `trigger` тоже создаёт tmpfiles.d (0660, `subnet-tracker:subnet-tracker`): в него дописывают и web, и CLI любого пользователя группы. |
+
+`deploy/tmpfiles.d/subnet-tracker.conf`:
+
+```
+d /run/subnet-tracker 0770 subnet-tracker subnet-tracker -
+f /run/subnet-tracker/trigger 0660 subnet-tracker subnet-tracker -
+```
+
+Тип `f`, не `f+`: повторный прогон tmpfiles не обнуляет trigger-файл, обнуление разбудило бы ещё один `tick`. Сокет и `tick.lock` в этот файл не входят. Сокет создаёт OpenVPN (раздел 3.1), lock — `flock` внутри `tick`.
 
 Пути OpenVPN задаются только в `config.toml`, а не в БД: web UI не должен иметь возможность заставить `tick` писать в произвольный файл.
 
@@ -1500,6 +1559,7 @@ Server key pin: sha256/3q2+7wAbCdEf...
 | `resolver` | Классификация ответов `dnspython` и DoH JSON от браузера (фикстуры Cloudflare и Google: A, AAAA, CNAME, NXDOMAIN, HTTP-ошибки); `unreachable`; отказ не вызывает истечения; `unhealthy_ratio`; истечение по каждой паре имя × резолвер; обновление `names.last_attempt_at` и `last_success_at`; у двух имён домена независимые результаты и адреса. |
 | `core/settings` | Ключи реестра и их порядок совпадают с таблицей раздела 13.2; значение по умолчанию каждого ключа проходит собственную проверку; недопустимые значения каждого вида отклоняются с понятной ошибкой; текстовая и JSON-форма (наибольшая единица длительности и размера, списки без повторов); неизвестный ключ отклоняется в `parse`, `get`, `set` и `reset`; `set` → `get` для каждого ключа и типизированный `Settings`; значение по умолчанию не хранится, `reset` удаляет строку; строка неизвестного ключа игнорируется, неверное хранимое значение — ошибка с именем ключа. |
 | `core/events`, `requests`, `trigger` | Событие и запрос откатываются вместе с изменением во внешней транзакции; события переживают удаление домена; фильтры по типу, домену, резолверу и автору; неизвестный `kind` читается как текст; чистка по `history.retention` на границе; объединение запросов (домены по `trigger`, сильнейший режим `apply`), удаление только прочитанных строк; trigger-файл дописывается строкой, не пишется внутри транзакции, а ошибка записи возвращается, а не бросается. |
+| `deploy` | Содержимое `deploy/systemd/subnet-tracker-tick.{service,timer,path}` и `deploy/tmpfiles.d/subnet-tracker.conf` без запуска systemd: `Type=oneshot`, `User=` и `Group=subnet-tracker`, `ExecStart` — `/opt/subnet-tracker/bin/subnet-tracker tick`, без `RuntimeDirectory=`; таймер `OnCalendar=minutely`, `AccuracySec=1s`, `WantedBy=timers.target`; path `PathModified=/run/subnet-tracker/trigger` после tmpfiles; каталог `0770` и строка `f /run/subnet-tracker/trigger 0660 subnet-tracker subnet-tracker -`; сокет и `tick.lock` tmpfiles не создаёт. |
 | `core/external` | Выбор заданий: новые первыми, `requested_at`, порог m по `attempted_at` (с ошибками), аренда, ровно n самых старых; приём и валидация результатов; сессии. |
 | `openvpn.reconnect` | `reconnect_due_at` для всех режимов: `on_leave` отодвигается присутствием и не смотрит на `min_interval`; `auto` ждёт и окна, и конца присутствия; `now` срабатывает сразу; удаление маршрутов не ставит переподключение. Присутствие: heartbeat продлевает, leave сокращает до `leave_grace`, переход между страницами не вызывает переподключения. |
 | `openvpn` | Подставной management-сервер на unix-сокете: разбор `status 3`, `client-kill` с паузой, ожидание срока внутри `tick`, повтор при недоступности. |
