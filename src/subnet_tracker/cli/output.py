@@ -1,6 +1,6 @@
 import json
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -61,6 +61,13 @@ def moment(ts: Timestamp | None) -> str:
 
 def rejected(error: FieldError) -> Failed:
     return Failed(ExitCode.USAGE, (f"{error.field}: {error.message}",))
+
+
+def changed_line(title: str, changes: Mapping[str, tuple[JsonValue, JsonValue]]) -> str:
+    if not changes:
+        return "nothing changed"
+    parts = [f"{name} {json.dumps(old, ensure_ascii=False)} -> {json.dumps(new, ensure_ascii=False)}" for name, (old, new) in changes.items()]
+    return f"{title}: {', '.join(parts)}"
 
 
 def warning(message: str) -> str:

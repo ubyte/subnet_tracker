@@ -1,11 +1,11 @@
 import sqlite3
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, replace
 
 from subnet_tracker.core.db import snapshot, transaction
 from subnet_tracker.core.edits import KEEP, Keep, edit_columns, insert_row, only_linked, prefixes_error, taken, update_row
 from subnet_tracker.core.memberships import DOMAIN, Membership, SetChange, Side, edit_memberships
-from subnet_tracker.types import MAX_GROUP_NAME, DomainId, FieldError, GroupId, Timestamp, one_line_name, one_line_text
+from subnet_tracker.types import MAX_GROUP_NAME, DomainId, FieldError, GlobalRouteId, GroupId, Timestamp, one_line_name, one_line_text
 
 # the filter keyword for domains without a group, so no group may take it as a name
 NO_GROUP = "none"
@@ -131,3 +131,18 @@ def list_groups(conn: sqlite3.Connection) -> tuple[GroupRow, ...]:
 
 def edit_domain_groups(conn: sqlite3.Connection, domain_ids: Collection[DomainId], change: SetChange[GroupId], now: Timestamp) -> int:
     return edit_memberships(conn, GROUPS, domain_ids, change, now)
+
+
+def group_usage(conn: sqlite3.Connection, group_id: GroupId) -> tuple[int, int]:
+    def count(table: str) -> int:
+        return int(conn.execute(f"SELECT count(*) FROM {table} WHERE group_id = ?", (group_id,)).fetchone()[0])
+
+    return count("domain_groups"), count("route_groups")
+
+
+def exclusive_member_ids(conn: sqlite3.Connection, group_id: GroupId) -> tuple[tuple[DomainId, ...], tuple[GlobalRouteId, ...]]:
+    def column[T](table: str, links: str, member: str, make: Callable[[int], T]) -> tuple[T, ...]:
+        rows = conn.execute(f"SELECT id FROM {table} WHERE id IN ({only_linked(links, member, 'group_id')}) ORDER BY id", (group_id,))
+        return tuple(make(row[0]) for row in rows)
+
+    return column("domains", "domain_groups", "domain_id", DomainId), column("global_routes", "route_groups", "route_id", GlobalRouteId)

@@ -22,6 +22,18 @@ class EventKind(StrEnum):
     AGENT_REJECTED = "agent.rejected"
     RECONNECT_DONE = "reconnect.done"
     SETTING_CHANGED = "setting.changed"
+    GROUP_ADDED = "group.added"
+    GROUP_CHANGED = "group.changed"
+    GROUP_DELETED = "group.deleted"
+    TAG_RENAMED = "tag.renamed"
+    TAG_MERGED = "tag.merged"
+    TAG_DELETED = "tag.deleted"
+    ROUTE_ADDED = "route.added"
+    ROUTE_CHANGED = "route.changed"
+    ROUTE_DELETED = "route.deleted"
+    RESOLVER_ADDED = "resolver.added"
+    RESOLVER_CHANGED = "resolver.changed"
+    RESOLVER_DELETED = "resolver.deleted"
 
 
 @dataclass(frozen=True, slots=True)
