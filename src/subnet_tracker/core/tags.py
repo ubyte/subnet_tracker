@@ -41,6 +41,11 @@ def find_tag(conn: sqlite3.Connection, name: str) -> Tag | None:
     return None if row is None else _tag(row)
 
 
+def get_tag(conn: sqlite3.Connection, tag_id: TagId) -> Tag | None:
+    row = conn.execute("SELECT id, name FROM tags WHERE id = ?", (tag_id,)).fetchone()
+    return None if row is None else _tag(row)
+
+
 def list_tags(conn: sqlite3.Connection) -> tuple[TagRow, ...]:
     rows = conn.execute("SELECT t.id, t.name, count(dt.domain_id) AS domains FROM tags t LEFT JOIN domain_tags dt ON dt.tag_id = t.id GROUP BY t.id ORDER BY t.name")
     return tuple(TagRow(_tag(row), row["domains"]) for row in rows)
