@@ -6,8 +6,7 @@ import pytest
 
 from subnet_tracker.cli.command import Runtime
 from subnet_tracker.cli.main import main
-from subnet_tracker.core.events import JsonValue
-from subnet_tracker.types import Timestamp
+from subnet_tracker.types import JsonValue, Timestamp
 
 NOW = Timestamp(1_760_000_000)
 USER = "alice"

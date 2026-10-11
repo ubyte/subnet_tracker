@@ -3,7 +3,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 
-from subnet_tracker.core.events import JsonValue
+from subnet_tracker.types import JsonValue
 
 PROG = "subnet-tracker"
 

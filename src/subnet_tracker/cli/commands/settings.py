@@ -3,10 +3,10 @@ from collections.abc import Sequence
 
 from subnet_tracker.cli.command import Commands, Context
 from subnet_tracker.cli.output import Done, ExitCode, Failed, Outcome, table
-from subnet_tracker.core.events import JsonValue
 from subnet_tracker.core.services.settings import change_setting
 from subnet_tracker.core.settings import SettingError, SettingState, SettingUpdate
 from subnet_tracker.core.settings_store import get_setting, list_settings
+from subnet_tracker.types import JsonValue
 
 
 def settings_table(states: Sequence[SettingState]) -> str:

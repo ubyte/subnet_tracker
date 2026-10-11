@@ -1,13 +1,11 @@
 import json
 import sqlite3
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
 from subnet_tracker.core.db import transaction
-from subnet_tracker.types import DomainId, DomainName, EventId, ResolverId, Seconds, Timestamp
-
-type JsonValue = str | int | float | bool | Sequence[JsonValue] | Mapping[str, JsonValue] | None
+from subnet_tracker.types import DomainId, DomainName, EventId, JsonValue, ResolverId, Seconds, Timestamp
 
 _INSERT = "INSERT INTO events (ts, kind, actor, domain_id, name, details) VALUES (?, ?, ?, ?, ?, ?)"
 _SELECT = "SELECT id, ts, kind, actor, domain_id, name, details FROM events"
