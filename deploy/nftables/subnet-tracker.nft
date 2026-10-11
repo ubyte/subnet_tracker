@@ -1,0 +1,6 @@
+table inet subnet-tracker {
+    chain input {
+        type filter hook input priority filter; policy accept;
+        tcp dport 8080 iifname != "lo" iifname != "tun0" drop
+    }
+}
