@@ -224,5 +224,18 @@ def parse_ip_range(text: str) -> IpRange:
         raise ValueError(f"invalid address range {text!r}: {e}") from None
 
 
+def network_order(net: IPv4Network | IPv6Network) -> tuple[int, int, int]:
+    return net.version, int(net.network_address), net.prefixlen
+
+
 def zone_error(net: IPv4Network | IPv6Network) -> str | None:
     return "zone index is not routable" if isinstance(net, IPv6Network) and net.network_address.scope_id else None
+
+
+# an address becomes /32 or /128 and host bits are zeroed, as in a paste (9.1)
+def route_network(field: str, text: str) -> IPv4Network | IPv6Network | FieldError:
+    try:
+        net = ip_network(text, strict=False)
+    except ValueError:
+        return FieldError(field, "not an address or CIDR")
+    return net if (error := zone_error(net)) is None else FieldError(field, error)

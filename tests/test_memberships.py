@@ -32,10 +32,10 @@ def test_diff_lists_rows_to_add_and_remove_by_domain() -> None:
     current = {D1: frozenset({1}), D2: frozenset({1, 2})}
     diff = membership_diff(current, [D3, D2, D1], SetChange(remove=frozenset({2}), add=frozenset({1, 3})))
     assert diff == MembershipDiff(((D1, 3), (D2, 3), (D3, 1), (D3, 3)), ((D2, 2),))
-    assert diff.domains == {D1, D2, D3}
+    assert diff.owners == {D1, D2, D3}
 
 
 def test_diff_skips_domains_whose_set_is_unchanged() -> None:
     diff = membership_diff({D1: frozenset({1})}, [D1, D2], SetChange(remove=frozenset({2}), add=frozenset({1})))
     assert diff == MembershipDiff(((D2, 1),), ())
-    assert diff.domains == {D2}
+    assert diff.owners == {D2}

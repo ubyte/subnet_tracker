@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from subnet_tracker.config import IPNetwork
-from subnet_tracker.types import AddressId, DomainId, GlobalRouteId, GroupId, IPAddress, NameId, ResolverId, RouteKind, Seconds, Timestamp
+from subnet_tracker.types import AddressId, DomainId, GlobalRouteId, GroupId, IPAddress, NameId, ResolverId, RouteKind, Seconds, Timestamp, network_order
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,4 +211,4 @@ class RoutePlan:
 
 
 def route_order(route: Route) -> tuple[int, int, int]:
-    return route.network.version, int(route.network.network_address), route.network.prefixlen
+    return network_order(route.network)

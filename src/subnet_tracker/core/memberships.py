@@ -28,31 +28,40 @@ class SetChange[T: int]:
 
 
 @dataclass(frozen=True, slots=True)
-class MembershipDiff[T: int]:
-    added: tuple[tuple[DomainId, T], ...]
-    removed: tuple[tuple[DomainId, T], ...]
+class MembershipDiff[O: int, T: int]:
+    added: tuple[tuple[O, T], ...]
+    removed: tuple[tuple[O, T], ...]
 
     @property
-    def domains(self) -> frozenset[DomainId]:
-        return frozenset(domain for domain, _ in (*self.added, *self.removed))
+    def owners(self) -> frozenset[O]:
+        return frozenset(owner for owner, _ in (*self.added, *self.removed))
 
 
 @dataclass(frozen=True, slots=True)
-class Membership[T: int]:
+class Side[T: int]:
     table: str
-    column: str
-    targets: str
+    column: str  # the id of a table row in the link table
     make: Callable[[int], T]
 
 
-def membership_diff[T: int](current: Mapping[DomainId, frozenset[T]], domains: Iterable[DomainId], change: SetChange[T]) -> MembershipDiff[T]:
-    added: list[tuple[DomainId, T]] = []
-    removed: list[tuple[DomainId, T]] = []
-    for domain in sorted(domains):
-        before = current.get(domain, frozenset())
+DOMAIN = Side("domains", "domain_id", DomainId)
+
+
+@dataclass(frozen=True, slots=True)
+class Membership[O: int, T: int]:
+    table: str
+    owner: Side[O]  # its updated_at changes with its set
+    target: Side[T]
+
+
+def membership_diff[O: int, T: int](current: Mapping[O, frozenset[T]], owners: Iterable[O], change: SetChange[T]) -> MembershipDiff[O, T]:
+    added: list[tuple[O, T]] = []
+    removed: list[tuple[O, T]] = []
+    for owner in sorted(owners):
+        before = current.get(owner, frozenset())
         after = change.applied(before)
-        added += ((domain, t) for t in sorted(after - before))
-        removed += ((domain, t) for t in sorted(before - after))
+        added += ((owner, t) for t in sorted(after - before))
+        removed += ((owner, t) for t in sorted(before - after))
     return MembershipDiff(tuple(added), tuple(removed))
 
 
@@ -60,19 +69,19 @@ def _ids(ids: Iterable[int]) -> str:
     return json.dumps(sorted(ids))
 
 
-def _current[T: int](conn: sqlite3.Connection, m: Membership[T], domains: Collection[DomainId]) -> dict[DomainId, frozenset[T]]:
-    current: defaultdict[DomainId, set[T]] = defaultdict(set)
-    for domain_id, target in conn.execute(f"SELECT domain_id, {m.column} FROM {m.table} WHERE domain_id {_IN}", (_ids(domains),)):
-        current[DomainId(domain_id)].add(m.make(target))
-    return {domain: frozenset(targets) for domain, targets in current.items()}
+def _current[O: int, T: int](conn: sqlite3.Connection, m: Membership[O, T], owners: Collection[O]) -> dict[O, frozenset[T]]:
+    current: defaultdict[O, set[T]] = defaultdict(set)
+    for owner, target in conn.execute(f"SELECT {m.owner.column}, {m.target.column} FROM {m.table} WHERE {m.owner.column} {_IN}", (_ids(owners),)):
+        current[m.owner.make(owner)].add(m.target.make(target))
+    return {owner: frozenset(targets) for owner, targets in current.items()}
 
 
-def edit_memberships[T: int](conn: sqlite3.Connection, m: Membership[T], domain_ids: Collection[DomainId], change: SetChange[T], now: Timestamp) -> int:
+def edit_memberships[O: int, T: int](conn: sqlite3.Connection, m: Membership[O, T], owner_ids: Collection[O], change: SetChange[T], now: Timestamp) -> int:
     with transaction(conn):
-        domains = [DomainId(i) for (i,) in conn.execute(f"SELECT id FROM domains WHERE id {_IN}", (_ids(domain_ids),))]
-        known = frozenset(m.make(i) for (i,) in conn.execute(f"SELECT id FROM {m.targets} WHERE id {_IN}", (_ids(change.targets),)))
-        diff = membership_diff(_current(conn, m, domains), domains, change.within(known))
-        conn.executemany(f"DELETE FROM {m.table} WHERE domain_id = ? AND {m.column} = ?", diff.removed)
-        conn.executemany(f"INSERT INTO {m.table} (domain_id, {m.column}) VALUES (?, ?)", diff.added)
-        conn.execute(f"UPDATE domains SET updated_at = ? WHERE id {_IN}", (now, _ids(diff.domains)))
-    return len(diff.domains)
+        owners = [m.owner.make(i) for (i,) in conn.execute(f"SELECT id FROM {m.owner.table} WHERE id {_IN}", (_ids(owner_ids),))]
+        known = frozenset(m.target.make(i) for (i,) in conn.execute(f"SELECT id FROM {m.target.table} WHERE id {_IN}", (_ids(change.targets),)))
+        diff = membership_diff(_current(conn, m, owners), owners, change.within(known))
+        conn.executemany(f"DELETE FROM {m.table} WHERE {m.owner.column} = ? AND {m.target.column} = ?", diff.removed)
+        conn.executemany(f"INSERT INTO {m.table} ({m.owner.column}, {m.target.column}) VALUES (?, ?)", diff.added)
+        conn.execute(f"UPDATE {m.owner.table} SET updated_at = ? WHERE id {_IN}", (now, _ids(diff.owners)))
+    return len(diff.owners)

@@ -4,10 +4,10 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 
 from subnet_tracker.core.db import transaction
-from subnet_tracker.core.memberships import Membership, SetChange, edit_memberships
+from subnet_tracker.core.memberships import DOMAIN, Membership, SetChange, Side, edit_memberships
 from subnet_tracker.types import MAX_TAG_NAME, DomainId, FieldError, TagId, Timestamp, one_line_name
 
-TAGS = Membership("domain_tags", "tag_id", "tags", TagId)
+TAGS = Membership("domain_tags", DOMAIN, Side("tags", "tag_id", TagId))
 
 
 @dataclass(frozen=True, slots=True)
