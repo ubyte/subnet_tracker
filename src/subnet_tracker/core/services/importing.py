@@ -15,6 +15,7 @@ from subnet_tracker.core.services.settings import change_setting
 from subnet_tracker.core.services.tags import remove_tag
 from subnet_tracker.core.settings import SettingError
 from subnet_tracker.core.tags import find_tag, list_tags
+from subnet_tracker.discovery.www import domain_names
 from subnet_tracker.routes.exclusions import server_address_error
 from subnet_tracker.textio.changes import ImportDiff, ImportMode, import_summary
 from subnet_tracker.textio.diff import import_diff
@@ -49,7 +50,9 @@ def _in_scope(groups: frozenset[str], tags: frozenset[str], wanted_groups: froze
 def _scoped(current: ExportFile, file: ImportFile, groups: frozenset[str], tags: frozenset[str]) -> tuple[ExportFile, ImportFile]:
     if not groups and not tags:
         return current, file
-    domains = tuple(line for line in file.domains if _in_scope(frozenset(line.groups), frozenset(line.tags), groups, tags))
+    # a line that names a stored domain outside the filter is not an add: that domain is left untouched
+    outside = {name for domain in current.domains if not _in_scope(domain.groups, domain.tags, groups, tags) for name in domain_names(domain.name).all}
+    domains = tuple(line for line in file.domains if _in_scope(frozenset(line.groups), frozenset(line.tags), groups, tags) and outside.isdisjoint(domain_names(line.name).all))
     first = {line.line for line in domains}
     duplicates = tuple(dup for dup in file.duplicates if dup.first_line in first)
     kept = tuple(domain for domain in current.domains if _in_scope(domain.groups, domain.tags, groups, tags))
@@ -88,7 +91,8 @@ def _server_errors(current: ExportFile, file: ImportFile, servers: Collection[IP
 
 
 def _keep_omitted(current: ExportFile, file: ImportFile) -> ImportFile:
-    named = {section.name for section in file.groups}
+    # a referenced group is in the file without a section, so replace defaults it; the filter keeps only what the file never mentions
+    named = {section.name for section in file.groups} | {name for line in file.domains for name in line.groups} | {name for line in file.routes for name in line.groups}
     groups = tuple(GroupSection(0, group.name, group.description, group.prefix_v4, group.prefix_v6, group.enabled) for group in current.groups if group.name not in named)
     keys = {line.key for line in file.settings}
     settings = tuple(SettingLine(0, setting.key, setting.value) for setting in current.settings if setting.key not in keys)
