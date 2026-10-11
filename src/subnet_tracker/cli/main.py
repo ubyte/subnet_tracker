@@ -6,7 +6,7 @@ from contextlib import closing
 from pathlib import Path
 
 from subnet_tracker.cli.command import Commands, Context, Runtime, cli_actor
-from subnet_tracker.cli.commands import add, batch, db, domain, group, resolver, route, settings, tag, tick
+from subnet_tracker.cli.commands import add, batch, db, domain, group, resolver, route, settings, tag, tick, web
 from subnet_tracker.cli.output import PROG, Done, ExitCode, Failed, Outcome, render, warning
 from subnet_tracker.config import CONFIG_FILE, Config, ConfigError, load_config
 from subnet_tracker.core.db import MigrationError, connect, load_migrations, pending_migrations, schema_version
@@ -24,6 +24,7 @@ COMMANDS: tuple[Callable[[Commands], None], ...] = (
     settings.register,
     db.register,
     tick.register,
+    web.register,
 )
 
 
