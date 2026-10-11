@@ -120,21 +120,25 @@ def test_exclusions_list() -> None:
         ("10.8.0.0/24", ExclusionReason.TUNNEL_NETWORK),
         ("198.51.100.0/24", ExclusionReason.SETTING),
     ]
-    builtin = {str(e.network) for e in BUILTIN_EXCLUSIONS}
+    builtin = {e.network for e in BUILTIN_EXCLUSIONS}
     assert builtin == {
-        "0.0.0.0/8",
-        "10.0.0.0/8",
-        "100.64.0.0/10",
-        "127.0.0.0/8",
-        "169.254.0.0/16",
-        "172.16.0.0/12",
-        "192.168.0.0/16",
-        "224.0.0.0/3",
-        "::/128",
-        "::1/128",
-        "fc00::/7",
-        "fe80::/10",
-        "ff00::/8",
+        ip_network(n)
+        for n in (
+            "0.0.0.0/8",
+            "10.0.0.0/8",
+            "100.64.0.0/10",
+            "127.0.0.0/8",
+            "169.254.0.0/16",
+            "172.16.0.0/12",
+            "192.168.0.0/16",
+            "224.0.0.0/3",
+            "::/128",
+            "::1/128",
+            "::ffff:0:0/96",
+            "fc00::/7",
+            "fe80::/10",
+            "ff00::/8",
+        )
     }
 
 
@@ -150,7 +154,7 @@ def test_builtin_exclusion_drops_network(ip: str) -> None:
     assert str(warning.network) in warning.message
 
 
-@pytest.mark.parametrize("ip", ["::1", "::", "0.0.0.0", "127.0.0.1"])
+@pytest.mark.parametrize("ip", ["::1", "::", "::ffff:1.2.3.4", "0.0.0.0", "127.0.0.1"])
 def test_answer_inside_builtin_exclusion_is_no_address(ip: str) -> None:
     w = World()
     w.site("example.com", ip, "1.2.3.4", "2001:db8:1::5")
