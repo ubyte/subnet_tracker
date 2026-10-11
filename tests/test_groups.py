@@ -56,6 +56,8 @@ def test_unknown_group_is_not_found(db: sqlite3.Connection) -> None:
         (NewGroup(" \t "), FieldError("name", f"must be 1 to {MAX_GROUP_NAME} characters long")),
         (NewGroup("x" * (MAX_GROUP_NAME + 1)), FieldError("name", f"must be 1 to {MAX_GROUP_NAME} characters long")),
         (NewGroup("two\nlines"), FieldError("name", "line breaks are not allowed")),
+        (NewGroup("none"), FieldError("name", "'none' is reserved for domains without a group")),
+        (NewGroup(" NONE "), FieldError("name", "'NONE' is reserved for domains without a group")),
         (NewGroup("Video", "two\u2028lines"), FieldError("description", "line breaks are not allowed")),
         (NewGroup("Video", prefix_v4=7), FieldError("prefix_v4", "prefix /7 is out of range, expected 8 to 32")),
         (NewGroup("Video", prefix_v6=129), FieldError("prefix_v6", "prefix /129 is out of range, expected 16 to 128")),
@@ -121,6 +123,7 @@ def test_rename_to_taken_name_is_rejected(db: sqlite3.Connection) -> None:
     [
         (GroupEdit(name=""), FieldError("name", f"must be 1 to {MAX_GROUP_NAME} characters long")),
         (GroupEdit(name="a\rb"), FieldError("name", "line breaks are not allowed")),
+        (GroupEdit(name="None"), FieldError("name", "'None' is reserved for domains without a group")),
         (GroupEdit(description="a\nb"), FieldError("description", "line breaks are not allowed")),
         (GroupEdit(prefix_v4=33), FieldError("prefix_v4", "prefix /33 is out of range, expected 8 to 32")),
         (GroupEdit(prefix_v6=15), FieldError("prefix_v6", "prefix /15 is out of range, expected 16 to 128")),

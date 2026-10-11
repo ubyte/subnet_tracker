@@ -60,7 +60,7 @@ def test_invalid_names_are_all_reported_and_nothing_is_written(cli: Cli, db: sql
 @pytest.mark.parametrize(
     ("argv", "error"),
     [
-        (("--group", "Play"), "group: group 'Play' does not exist"),
+        (("--group", "Play"), "group: 'Play' does not exist"),
         (("--prefix4", "7"), "prefix_v4: prefix /7 is out of range, expected 8 to 32"),
         (("--comment", "a\nb"), "comment: line breaks are not allowed"),
     ],
@@ -139,9 +139,7 @@ def test_list_filters_and_sorts(listed: Cli, argv: tuple[str, ...], expected: li
     assert names(listed.json("domain", "list", *argv)) == expected
 
 
-@pytest.mark.parametrize(
-    ("argv", "error"), [(("--group", "Play"), "group: group 'Play' does not exist"), (("--tag", "audio"), "tag: tag 'audio' does not exist"), (("--batch", "9"), "batch: batch 9 does not exist")]
-)
+@pytest.mark.parametrize(("argv", "error"), [(("--group", "Play"), "group: 'Play' does not exist"), (("--tag", "audio"), "tag: 'audio' does not exist"), (("--batch", "9"), "batch: 9 does not exist")])
 def test_list_of_an_unknown_group_tag_or_batch_is_a_usage_error(listed: Cli, argv: tuple[str, ...], error: str) -> None:
     assert listed("domain", "list", *argv) == Result(2, "", f"subnet-tracker: error: {error}\n")
 
@@ -239,7 +237,7 @@ def test_edit_that_changes_nothing_notifies_nobody(two: Cli, db: sqlite3.Connect
     [
         (("a.com",), "nothing to change, give at least one option"),
         (("a.com", "x.com", "--disable"), "x.com is not tracked"),
-        (("a.com", "--rm-group", "Play"), "group: group 'Play' does not exist"),
+        (("a.com", "--rm-group", "Play"), "group: 'Play' does not exist"),
         (("a.com", "--prefix4", "33"), "prefix_v4: prefix /33 is out of range, expected 8 to 32"),
     ],
 )

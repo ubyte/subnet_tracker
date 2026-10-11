@@ -88,7 +88,7 @@ def test_no_resolve_requests_only_apply(db: sqlite3.Connection) -> None:
 @pytest.mark.parametrize(
     ("change", "error"),
     [
-        (DomainChange(add_groups=("Play",)), FieldError("group", "group 'Play' does not exist")),
+        (DomainChange(add_groups=("Play",)), FieldError("group", "'Play' does not exist")),
         (DomainChange(DomainEdit(prefix_v4=7), add_tags=("video",)), FieldError("prefix_v4", "prefix /7 is out of range, expected 8 to 32")),
         (DomainChange(DomainEdit(comment="a\nb")), FieldError("comment", "line breaks are not allowed")),
         (DomainChange(add_tags=("video", "x" * 51)), FieldError("tag", "must be 1 to 50 characters long")),
@@ -140,7 +140,7 @@ def test_unchanged_domains_write_nothing(db: sqlite3.Connection) -> None:
 @pytest.mark.parametrize(
     ("change", "error"),
     [
-        (DomainChange(remove_groups=("Play",)), FieldError("group", "group 'Play' does not exist")),
+        (DomainChange(remove_groups=("Play",)), FieldError("group", "'Play' does not exist")),
         (DomainChange(DomainEdit(prefix_v6=129)), FieldError("prefix_v6", "prefix /129 is out of range, expected 16 to 128")),
     ],
 )

@@ -104,6 +104,12 @@ def test_query_filters_and_sorts(world: sqlite3.Connection, query: DomainQuery, 
     assert listed(world, query) == names
 
 
+@pytest.mark.parametrize(("search", "found"), [("ПРИМ", True), ("пример.рф", True), ("xn--e1afmkfd", True), ("p1ai", True), ("кот", False)])
+def test_search_matches_punycode_and_unicode_names(db: sqlite3.Connection, search: str, found: bool) -> None:
+    paste(db, "a.com пример.рф")
+    assert listed(db, DomainQuery(search=search)) == (["xn--e1afmkfd.xn--p1ai"] if found else [])
+
+
 def test_resolve_time_sorts_put_the_oldest_and_unresolved_first(world: sqlite3.Connection) -> None:
     for name, attempt, success in (("a.com", 300, 300), ("www.a.com", 100, None), ("www.b.com", 200, None), ("d.com", 100, 50)):
         resolve_times(world, name, attempt, success)
@@ -119,9 +125,9 @@ def test_query_by_batch(world: sqlite3.Connection) -> None:
 @pytest.mark.parametrize(
     ("query", "error"),
     [
-        (DomainQuery(group="Play"), FieldError("group", "group 'Play' does not exist")),
-        (DomainQuery(tag="audio"), FieldError("tag", "tag 'audio' does not exist")),
-        (DomainQuery(batch_id=BatchId(99)), FieldError("batch", "batch 99 does not exist")),
+        (DomainQuery(group="Play"), FieldError("group", "'Play' does not exist")),
+        (DomainQuery(tag="audio"), FieldError("tag", "'audio' does not exist")),
+        (DomainQuery(batch_id=BatchId(99)), FieldError("batch", "99 does not exist")),
     ],
 )
 def test_unknown_group_tag_or_batch_is_an_error(world: sqlite3.Connection, query: DomainQuery, error: FieldError) -> None:
