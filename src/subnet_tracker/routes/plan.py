@@ -5,12 +5,13 @@ from ipaddress import IPv4Network, IPv6Network, collapse_addresses, ip_network
 
 from subnet_tracker.config import IPNetwork
 from subnet_tracker.routes.budget import apply_budget
-from subnet_tracker.routes.exclusions import builtin_of, exclusions, family_holes, overlapping, trim
+from subnet_tracker.routes.exclusions import builtin_of, covered_server, exclusions, family_holes, overlapping, trim
 from subnet_tracker.routes.model import (
     AddressSource,
     Domain,
     Exclusion,
     GlobalRoute,
+    GlobalRouteWarning,
     Group,
     Part,
     PartAddress,
@@ -27,7 +28,7 @@ from subnet_tracker.routes.model import (
     WarningKind,
     route_order,
 )
-from subnet_tracker.types import AddressId, GroupId, IPAddress, ResolverId, RouteKind, Seconds
+from subnet_tracker.types import AddressId, GroupId, IPAddress, ResolverId, RouteKind, Seconds, network_order
 
 type Fed = tuple[IPAddress, AddressSource]
 
@@ -122,13 +123,25 @@ def _dns_routes[N: (IPv4Network, IPv6Network)](family: type[N], fed: Iterable[Fe
     return list(_collapse(parts)), warnings, len(parts)
 
 
+def _global_routes(snapshot: Snapshot, groups: Mapping[GroupId, Group], settings: PlanSettings) -> tuple[list[GlobalRoute], list[GlobalRouteWarning]]:
+    kept, warnings = [], []
+    for r in sorted(snapshot.global_routes, key=lambda r: (network_order(r.network), r.id)):
+        if not (settings.pushes(r.network.version) and routable(r.enabled, r.groups, groups)):
+            continue
+        if (server := covered_server(r.network, settings.server_addresses)) is None:
+            kept.append(r)
+        else:
+            warnings.append(GlobalRouteWarning(r.id, r.network, server))
+    return kept, warnings
+
+
 def plan_routes(snapshot: Snapshot, settings: PlanSettings) -> RoutePlan:
     groups = {g.id: g for g in snapshot.groups}
     fed, dropped = _drop_builtin(_fed_addresses(snapshot, groups, settings))
     excluded = exclusions(settings)
-    global_routes = [r for r in snapshot.global_routes if settings.pushes(r.network.version) and routable(r.enabled, r.groups, groups)]
+    global_routes, covering_server = _global_routes(snapshot, groups, settings)
     routes_v4, warnings_v4, networks_v4 = _dns_routes(IPv4Network, fed, excluded, global_routes)
     routes_v6, warnings_v6, networks_v6 = _dns_routes(IPv6Network, fed, excluded, global_routes)
     routes = sorted([*routes_v4, *routes_v6, *(Route(r.network, RouteKind.GLOBAL, global_route_id=r.id) for r in global_routes)], key=route_order)
     stats = PlanStats(networks_v4, networks_v6, sum(r.network.version == 4 for r in routes), sum(r.network.version == 6 for r in routes))
-    return apply_budget(RoutePlan(tuple(routes), stats, (*dropped, *warnings_v4, *warnings_v6)), settings)
+    return apply_budget(RoutePlan(tuple(routes), stats, (*dropped, *warnings_v4, *warnings_v6, *covering_server)), settings)

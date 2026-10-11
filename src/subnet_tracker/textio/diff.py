@@ -3,8 +3,8 @@ from collections.abc import Iterable, Mapping
 from subnet_tracker.core.settings import SettingError, SettingValue, check_key, parse_setting, setting_state
 from subnet_tracker.discovery.www import domain_names
 from subnet_tracker.textio.changes import Changes, ImportDiff, ImportMode, SettingChange, Update
-from subnet_tracker.textio.model import DomainLine, DuplicateLine, ExportDomain, ExportFile, ExportGroup, ExportRoute, GroupSection, ImportFile, RouteLine, SettingLine, network_order
-from subnet_tracker.types import DomainName, ParseError, ParseResult
+from subnet_tracker.textio.model import DomainLine, DuplicateLine, ExportDomain, ExportFile, ExportGroup, ExportRoute, GroupSection, ImportFile, RouteLine, SettingLine
+from subnet_tracker.types import DomainName, ParseError, ParseResult, network_order
 
 type _RouteKey = tuple[int, int, int]
 

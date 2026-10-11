@@ -5,7 +5,7 @@ import pytest
 
 from routes_world import DAY, NOW, SYSTEM, World, cidrs
 from subnet_tracker.routes.exclusions import BUILTIN_EXCLUSIONS, exclusions
-from subnet_tracker.routes.model import ExclusionReason, PlanSettings, PlanWarning, Prefix, PrefixSource, Route, Snapshot, WarningKind
+from subnet_tracker.routes.model import ExclusionReason, GlobalRouteWarning, PlanSettings, PlanWarning, Prefix, PrefixSource, Route, Snapshot, WarningKind
 from subnet_tracker.routes.plan import plan_routes
 from subnet_tracker.types import RouteKind, Seconds
 
@@ -239,6 +239,45 @@ def test_dns_network_inside_global_route_is_dropped() -> None:
     assert cidrs(plan) == ["1.2.0.0/16", "5.6.7.0/24", "9.9.0.0/16", "9.9.9.0/24"]
     assert [r.kind for r in plan.routes] == [RouteKind.GLOBAL, RouteKind.GLOBAL, RouteKind.DNS, RouteKind.GLOBAL]
     assert plan.routes[0].global_route_id == gid
+
+
+def test_enabled_global_route_covering_a_server_address_is_dropped_with_a_warning() -> None:
+    w = World()
+    off = w.group(enabled=False)
+    v6 = w.global_route("2001:db8::/32")
+    v4 = w.global_route("203.0.113.0/24")
+    w.global_route("9.9.9.0/24")
+    w.global_route("203.0.0.0/8", enabled=False)
+    w.global_route("203.0.113.8/29", groups=(off,))
+    exact = w.global_route("203.0.113.10/32")
+    plan = w.plan(PlanSettings(server_addresses=(ip_address("203.0.113.10"), ip_address("2001:db8::1"))))
+    assert cidrs(plan) == ["9.9.9.0/24"]
+    assert plan.warnings == (
+        GlobalRouteWarning(v4, ip_network("203.0.113.0/24"), ip_address("203.0.113.10")),
+        GlobalRouteWarning(exact, ip_network("203.0.113.10/32"), ip_address("203.0.113.10")),
+        GlobalRouteWarning(v6, ip_network("2001:db8::/32"), ip_address("2001:db8::1")),
+    )
+    assert plan.warnings[0].kind == WarningKind.COVERS_SERVER
+    assert plan.warnings[0].message == "global route 203.0.113.0/24 dropped, it covers the server address 203.0.113.10"
+    assert plan.stats.routes_v4 == 1
+
+
+def test_global_route_of_a_family_not_pushed_gives_no_warning() -> None:
+    w = World()
+    w.global_route("2001:db8::/32")
+    plan = w.plan(PlanSettings(push_ipv6=False, server_addresses=(ip_address("2001:db8::1"),)))
+    assert (plan.routes, plan.warnings) == ((), ())
+
+
+def test_dns_networks_inside_a_dropped_global_route_stay_and_are_trimmed() -> None:
+    w = World()
+    gid = w.global_route("1.2.0.0/16")
+    w.site("inside.example", "1.2.3.4")
+    plan = w.plan(PlanSettings(server_addresses=(ip_address("1.2.3.10"),)))
+    assert cidrs(plan) == [str(n) for n in sorted(IPv4Network("1.2.2.0/23").address_exclude(IPv4Network("1.2.3.10/32")))]
+    assert all(r.kind == RouteKind.DNS for r in plan.routes)
+    assert [x.kind for x in plan.warnings] == [WarningKind.TRIMMED, WarningKind.COVERS_SERVER]
+    assert plan.warnings[1] == GlobalRouteWarning(gid, ip_network("1.2.0.0/16"), ip_address("1.2.3.10"))
 
 
 def test_retention_boundary() -> None:

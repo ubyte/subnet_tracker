@@ -97,7 +97,9 @@ def test_empty_edit_returns_group_unchanged(db: sqlite3.Connection) -> None:
 
 
 def test_edit_of_unknown_group_returns_none(db: sqlite3.Connection) -> None:
+    make_group(db, "Video")
     assert edit_group(db, GroupId(99), GroupEdit(enabled=False), LATER) is None
+    assert edit_group(db, GroupId(99), GroupEdit(name="Video"), LATER) is None
 
 
 def test_rename_to_own_name_is_allowed(db: sqlite3.Connection) -> None:

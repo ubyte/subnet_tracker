@@ -3,11 +3,12 @@ from collections.abc import Collection
 from dataclasses import dataclass, replace
 
 from subnet_tracker.core.db import snapshot, transaction
-from subnet_tracker.core.edits import KEEP, Keep, edit_columns, prefixes_error
-from subnet_tracker.core.memberships import Membership, SetChange, edit_memberships
+from subnet_tracker.core.edits import KEEP, Keep, edit_columns, insert_row, only_linked, prefixes_error, taken, update_row
+from subnet_tracker.core.memberships import DOMAIN, Membership, SetChange, Side, edit_memberships
 from subnet_tracker.types import MAX_GROUP_NAME, DomainId, FieldError, GroupId, Timestamp, one_line_name, one_line_text
 
-GROUPS = Membership("domain_groups", "group_id", "groups", GroupId)
+GROUP = Side("groups", "group_id", GroupId)
+GROUPS = Membership("domain_groups", DOMAIN, GROUP)
 _COUNTS = "(SELECT count(*) FROM domain_groups WHERE group_id = g.id) AS domains, (SELECT count(*) FROM route_groups WHERE group_id = g.id) AS routes"
 _MEMBERS = (("domains", "domain_groups", "domain_id"), ("global_routes", "route_groups", "route_id"))
 
@@ -73,12 +74,6 @@ def _group(row: sqlite3.Row) -> Group:
     return Group(GroupId(row["id"]), row["name"], row["description"], row["prefix_v4"], row["prefix_v6"], bool(row["enabled"]), Timestamp(row["created_at"]), Timestamp(row["updated_at"]))
 
 
-def _name_taken(conn: sqlite3.Connection, name: str | Keep, group_id: GroupId | None) -> FieldError | None:
-    if isinstance(name, str) and conn.execute("SELECT 1 FROM groups WHERE name = ? AND id IS NOT ?", (name, group_id)).fetchone():
-        return FieldError("name", f"group {name!r} already exists")
-    return None
-
-
 def get_group(conn: sqlite3.Connection, group_id: GroupId) -> Group | None:
     row = conn.execute("SELECT * FROM groups WHERE id = ?", (group_id,)).fetchone()
     return None if row is None else _group(row)
@@ -93,31 +88,27 @@ def create_group(conn: sqlite3.Connection, group: NewGroup, now: Timestamp) -> G
     checked = checked_group_edit(GroupEdit(group.name, group.description, group.prefix_v4, group.prefix_v6, group.enabled))
     if isinstance(checked, FieldError):
         return checked
-    columns = edit_columns(checked)
     with transaction(conn):
-        if error := _name_taken(conn, checked.name, None):
+        if error := taken(conn, "groups", "name", "group", checked.name, None):
             return error
-        row = conn.execute(f"INSERT INTO groups ({', '.join(columns)}, created_at, updated_at) VALUES ({', '.join('?' * len(columns))}, ?, ?) RETURNING *", (*columns.values(), now, now)).fetchone()
-    return _group(row)
+        return _group(insert_row(conn, "groups", edit_columns(checked), now))
 
 
 def edit_group(conn: sqlite3.Connection, group_id: GroupId, edit: GroupEdit, now: Timestamp) -> Group | FieldError | None:
     checked = checked_group_edit(edit)
     if isinstance(checked, FieldError):
         return checked
-    columns = edit_columns(checked)
     with transaction(conn):
-        if error := _name_taken(conn, checked.name, group_id):
+        if get_group(conn, group_id) is None:
+            return None
+        if error := taken(conn, "groups", "name", "group", checked.name, group_id):
             return error
-        if columns:
-            assignments = ", ".join(f"{column} = ?" for column in columns)
-            conn.execute(f"UPDATE groups SET {assignments}, updated_at = ? WHERE id = ?", (*columns.values(), now, group_id))
+        update_row(conn, "groups", group_id, edit_columns(checked), now)
         return get_group(conn, group_id)
 
 
 def _delete_only_members(conn: sqlite3.Connection, group_id: GroupId) -> DeletedGroup:
-    only_in = "SELECT {0} FROM {1} GROUP BY {0} HAVING count(*) = 1 AND max(group_id) = ?"
-    return DeletedGroup(*(conn.execute(f"DELETE FROM {table} WHERE id IN ({only_in.format(member, links)})", (group_id,)).rowcount for table, links, member in _MEMBERS))
+    return DeletedGroup(*(conn.execute(f"DELETE FROM {table} WHERE id IN ({only_linked(links, member, 'group_id')})", (group_id,)).rowcount for table, links, member in _MEMBERS))
 
 
 def delete_group(conn: sqlite3.Connection, group_id: GroupId, with_members: bool = False) -> DeletedGroup | None:

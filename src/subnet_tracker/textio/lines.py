@@ -2,12 +2,11 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum, auto
-from ipaddress import ip_network
 
-from subnet_tracker.discovery.parse import Network, Rejected, normalize_name
+from subnet_tracker.discovery.parse import Rejected, normalize_name
 from subnet_tracker.textio.model import DomainLine, GroupSection, RouteLine
 from subnet_tracker.textio.tokens import QUOTED, Tokens, Word, tokens, unescape
-from subnet_tracker.types import MAX_GROUP_NAME, MAX_TAG_NAME, PREFIX_V4, PREFIX_V6, ParseError, ParseResult, zone_error
+from subnet_tracker.types import MAX_GROUP_NAME, MAX_TAG_NAME, PREFIX_V4, PREFIX_V6, FieldError, ParseError, ParseResult, route_network
 
 DISABLED = "!disabled"
 _HEADER = re.compile(rf"\[(settings|ungrouped|routes|addresses)\]|\[group\s+{QUOTED}\]")
@@ -139,14 +138,6 @@ def domain_line(line: int, text: str, group: str | None) -> ParseResult[DomainLi
             return _line_result(line, DomainLine(line, name, attrs.groups, attrs.tags, attrs.prefix_v4, attrs.prefix_v6, attrs.enabled, parsed.comment), errors)
 
 
-def _network(text: str) -> Network | Rejected:
-    try:
-        net = ip_network(text, strict=False)
-    except ValueError:
-        return Rejected("not an address or CIDR")
-    return net if (error := zone_error(net)) is None else Rejected(error)
-
-
 def route_line(line: int, text: str) -> ParseResult[RouteLine | None]:
     split = _split(text, "an address or CIDR")
     if isinstance(split, Rejected):
@@ -155,8 +146,8 @@ def route_line(line: int, text: str) -> ParseResult[RouteLine | None]:
     allowed = [w for w in parsed.words[1:] if w.sigil == "@" or w.raw == DISABLED]
     attrs, errors = _attributes(allowed, ())
     errors += [f"{w.raw!r}: only @group and {DISABLED} are allowed in [routes]" for w in parsed.words[1:] if w not in allowed]
-    match _network(head.text):
-        case Rejected(reason):
+    match route_network("cidr", head.text):
+        case FieldError(_, reason):
             return _line_result(line, None, [f"{head.raw!r}: {reason}", *errors])
         case net:
             return _line_result(line, RouteLine(line, net, attrs.groups, attrs.enabled, parsed.comment), errors)

@@ -247,12 +247,31 @@ def test_routes() -> None:
 
 @pytest.mark.parametrize(
     "line",
-    ["example.com", "1.2.3.0/33", "2001:db8::/129", "fe80::1%eth0", "1.2.3.0/24 /24", "1.2.3.0/24 v6/48", "1.2.3.0/24 #tag", "1.2.3.0/24 !nope", "1.2.3.0/24 extra", "@A 1.2.3.0/24"],
+    [
+        "example.com",
+        "1.2.3.0/33",
+        "2001:db8::/129",
+        "fe80::1%eth0",
+        "::ffff:1.2.3.4",
+        "::ffff:1.2.3.0/120",
+        "1.2.3.0/24 /24",
+        "1.2.3.0/24 v6/48",
+        "1.2.3.0/24 #tag",
+        "1.2.3.0/24 !nope",
+        "1.2.3.0/24 extra",
+        "@A 1.2.3.0/24",
+    ],
 )
 def test_invalid_route_line_is_an_error(line: str) -> None:
     result = parse_import(f"[routes]\n10.0.0.0/8\n{line}\n")
     assert [e.line for e in result.errors] == [3]
     assert result.value.routes == (RouteLine(2, ip_network("10.0.0.0/8")),)
+
+
+def test_ipv4_mapped_route_is_an_error_but_a_covering_network_is_not() -> None:
+    result = parse_import("[routes]\n::ffff:1.2.3.4\n::/0\n")
+    assert [(e.line, e.message) for e in result.errors] == [(2, "'::ffff:1.2.3.4': IPv4-mapped addresses are not routable, use the IPv4 form")]
+    assert result.value.routes == (RouteLine(3, ip_network("::/0")),)
 
 
 def test_repeated_route_network_is_an_error() -> None:
