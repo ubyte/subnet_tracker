@@ -3,7 +3,7 @@ import os
 import pwd
 import sqlite3
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,19 +17,24 @@ def _clock() -> Timestamp:
     return Timestamp(int(time.time()))
 
 
-def _unix_user() -> str:
-    uid = os.getuid()
+def unix_user(uid: int, environ: Mapping[str, str]) -> str:
+    if uid == 0 and (sudo_user := environ.get("SUDO_USER")):
+        return sudo_user
     try:
         return pwd.getpwuid(uid).pw_name
     except KeyError:
         return str(uid)
 
 
+def _process_user() -> str:
+    return unix_user(os.getuid(), os.environ)
+
+
 @dataclass(frozen=True, slots=True)
 class Runtime:
     trigger_file: Path = TRIGGER_FILE
     clock: Callable[[], Timestamp] = _clock
-    user: Callable[[], str] = _unix_user
+    user: Callable[[], str] = _process_user
 
 
 @dataclass(frozen=True, slots=True)
