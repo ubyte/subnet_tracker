@@ -1,6 +1,6 @@
 import pytest
-from subnet_tracker.core.name_status import AddressState, NameStatus, ResolveResult, Sighting, address_state, domain_status, name_status
 
+from subnet_tracker.core.name_status import AddressState, NameStatus, ResolveResult, Sighting, address_state, domain_status, name_status
 from subnet_tracker.types import ResolveStatus, Seconds, Timestamp
 
 DAY = Seconds(86400)
