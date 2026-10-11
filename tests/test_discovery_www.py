@@ -3,6 +3,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from subnet_tracker.discovery.www import DomainNames, domain_names, pair_name
+from subnet_tracker.types import DomainName
 
 
 @pytest.mark.parametrize(
@@ -17,7 +18,7 @@ from subnet_tracker.discovery.www import DomainNames, domain_names, pair_name
         ("www.xn--e1afmkfd.xn--p1ai", "xn--e1afmkfd.xn--p1ai"),
     ],
 )
-def test_pair_name(name: str, pair: str) -> None:
+def test_pair_name(name: DomainName, pair: str) -> None:
     assert pair_name(name) == pair
 
 
@@ -25,29 +26,29 @@ def test_pair_name(name: str, pair: str) -> None:
     ("name", "pair"),
     [("com", "www.com"), ("www.com", "com"), ("www.co.uk", "co.uk"), ("github.io", "www.github.io"), ("localhost", "www.localhost"), ("www.local", "local"), ("wwwexample.com", "www.wwwexample.com")],
 )
-def test_pair_is_plain_text_without_suffix_checks(name: str, pair: str) -> None:
+def test_pair_is_plain_text_without_suffix_checks(name: DomainName, pair: str) -> None:
     assert pair_name(name) == pair
 
 
 def test_pair_length_is_left_to_parsing() -> None:
-    name = ".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 54, "com"])
+    name = DomainName(".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 54, "com"]))
     assert len(pair_name(name)) == 254
 
 
 @pytest.mark.parametrize(
     ("canonical", "names"),
     [
-        ("example.com", DomainNames("example.com", "www.example.com")),
-        ("www.example.com", DomainNames("www.example.com", "example.com")),
-        ("www.co.uk", DomainNames("www.co.uk", "co.uk")),
+        ("example.com", DomainNames(DomainName("example.com"), DomainName("www.example.com"))),
+        ("www.example.com", DomainNames(DomainName("www.example.com"), DomainName("example.com"))),
+        ("www.co.uk", DomainNames(DomainName("www.co.uk"), DomainName("co.uk"))),
     ],
 )
-def test_domain_names_keep_entered_name_canonical(canonical: str, names: DomainNames) -> None:
+def test_domain_names_keep_entered_name_canonical(canonical: DomainName, names: DomainNames) -> None:
     assert domain_names(canonical) == names
 
 
 def test_domain_names_lists_canonical_first() -> None:
-    assert domain_names("www.example.com").all == ("www.example.com", "example.com")
+    assert domain_names(DomainName("www.example.com")).all == ("www.example.com", "example.com")
 
 
 _label = st.from_regex(r"[a-z0-9]([a-z0-9-]{0,10}[a-z0-9])?", fullmatch=True)
@@ -55,12 +56,12 @@ _names = st.builds(lambda www, labels: "www." * www + ".".join(labels), st.integ
 
 
 @given(_names)
-def test_pair_differs_by_one_leading_www(name: str) -> None:
+def test_pair_differs_by_one_leading_www(name: DomainName) -> None:
     pair = pair_name(name)
     assert pair == "www." + name or name == "www." + pair
 
 
 @given(_names)
-def test_pair_of_pair_is_the_name_unless_double_www(name: str) -> None:
+def test_pair_of_pair_is_the_name_unless_double_www(name: DomainName) -> None:
     if not name.startswith("www.www."):
         assert pair_name(pair_name(name)) == name

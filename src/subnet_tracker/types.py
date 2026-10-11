@@ -23,6 +23,9 @@ WebDeviceId = NewType("WebDeviceId", int)
 RequestId = NewType("RequestId", int)
 ResolveRunId = NewType("ResolveRunId", int)
 
+# lowercase punycode, without the trailing dot
+DomainName = NewType("DomainName", str)
+
 
 class BatchKind(StrEnum):
     PASTE = auto()
