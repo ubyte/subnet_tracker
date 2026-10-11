@@ -79,9 +79,19 @@ class PlanSettings:
     exclude: tuple[IPNetwork, ...] = ()
     server_addresses: tuple[IPAddress, ...] = ()
     tunnel_networks: tuple[IPNetwork, ...] = ()
+    max_v4: int = 1000
+    max_v6: int = 300
+    min_aggregate_prefix_v4: int = 12
+    min_aggregate_prefix_v6: int = 32
 
     def pushes(self, version: int) -> bool:
         return self.push_ipv4 if version == 4 else self.push_ipv6
+
+    def budget(self, version: int) -> int:
+        return self.max_v4 if version == 4 else self.max_v6
+
+    def min_aggregate_prefix(self, version: int) -> int:
+        return self.min_aggregate_prefix_v4 if version == 4 else self.min_aggregate_prefix_v6
 
 
 class PrefixSource(StrEnum):
@@ -113,6 +123,7 @@ class Exclusion:
 class WarningKind(StrEnum):
     EXCLUDED = "excluded"
     TRIMMED = "trimmed"
+    OVER_BUDGET = "over_budget"
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +136,21 @@ class PlanWarning:
     def message(self) -> str:
         action = "dropped, inside" if self.kind == WarningKind.EXCLUDED else "trimmed around"
         return f"{self.network} {action} excluded {self.exclusion.network} ({self.exclusion.reason.replace('_', ' ')})"
+
+
+@dataclass(frozen=True, slots=True)
+class BudgetWarning:
+    version: int
+    limit: int
+    routes: int  # the fewest routes the family can be aggregated to, global routes included
+
+    @property
+    def kind(self) -> WarningKind:
+        return WarningKind.OVER_BUDGET
+
+    @property
+    def message(self) -> str:
+        return f"IPv{self.version} route budget {self.limit} is unreachable, at least {self.routes} routes"
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,10 +196,16 @@ class PlanStats:
     networks_v6: int
     routes_v4: int
     routes_v6: int
+    extra_ratio_v4: float = 0.0  # addresses of DNS routes outside their parts per address inside them
+    extra_ratio_v6: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
 class RoutePlan:
     routes: tuple[Route, ...]
     stats: PlanStats
-    warnings: tuple[PlanWarning, ...]
+    warnings: tuple[PlanWarning | BudgetWarning, ...]
+
+
+def route_order(route: Route) -> tuple[int, int, int]:
+    return route.network.version, int(route.network.network_address), route.network.prefixlen

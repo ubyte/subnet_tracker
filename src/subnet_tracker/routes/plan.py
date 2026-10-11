@@ -4,6 +4,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from ipaddress import IPv4Network, IPv6Network, collapse_addresses, ip_network
 
 from subnet_tracker.config import IPNetwork
+from subnet_tracker.routes.budget import apply_budget
 from subnet_tracker.routes.exclusions import builtin_of, exclusions, family_holes, overlapping, trim
 from subnet_tracker.routes.model import (
     AddressSource,
@@ -24,6 +25,7 @@ from subnet_tracker.routes.model import (
     Sighting,
     Snapshot,
     WarningKind,
+    route_order,
 )
 from subnet_tracker.types import AddressId, GroupId, IPAddress, ResolverId, RouteKind, Seconds
 
@@ -120,10 +122,6 @@ def _dns_routes[N: (IPv4Network, IPv6Network)](family: type[N], fed: Iterable[Fe
     return list(_collapse(parts)), warnings, len(parts)
 
 
-def _order(route: Route) -> tuple[int, int, int]:
-    return route.network.version, int(route.network.network_address), route.network.prefixlen
-
-
 def plan_routes(snapshot: Snapshot, settings: PlanSettings) -> RoutePlan:
     groups = {g.id: g for g in snapshot.groups}
     fed, dropped = _drop_builtin(_fed_addresses(snapshot, groups, settings))
@@ -131,6 +129,6 @@ def plan_routes(snapshot: Snapshot, settings: PlanSettings) -> RoutePlan:
     global_routes = [r for r in snapshot.global_routes if settings.pushes(r.network.version) and routable(r.enabled, r.groups, groups)]
     routes_v4, warnings_v4, networks_v4 = _dns_routes(IPv4Network, fed, excluded, global_routes)
     routes_v6, warnings_v6, networks_v6 = _dns_routes(IPv6Network, fed, excluded, global_routes)
-    routes = sorted([*routes_v4, *routes_v6, *(Route(r.network, RouteKind.GLOBAL, global_route_id=r.id) for r in global_routes)], key=_order)
+    routes = sorted([*routes_v4, *routes_v6, *(Route(r.network, RouteKind.GLOBAL, global_route_id=r.id) for r in global_routes)], key=route_order)
     stats = PlanStats(networks_v4, networks_v6, sum(r.network.version == 4 for r in routes), sum(r.network.version == 6 for r in routes))
-    return RoutePlan(tuple(routes), stats, (*dropped, *warnings_v4, *warnings_v6))
+    return apply_budget(RoutePlan(tuple(routes), stats, (*dropped, *warnings_v4, *warnings_v6)), settings)
