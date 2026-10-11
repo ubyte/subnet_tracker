@@ -1,18 +1,21 @@
+import re
 from dataclasses import replace
 from ipaddress import ip_address, ip_network
+from pathlib import Path
 from random import Random
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from subnet_tracker.core.settings import SettingValue, parse_setting
 from subnet_tracker.discovery.parse import Network
 from subnet_tracker.discovery.www import domain_names
 from subnet_tracker.textio.export import LineBreaks, render_export
-from subnet_tracker.textio.lines import MAX_GROUP_NAME, MAX_TAG_NAME, PREFIX_V4, PREFIX_V6
-from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute, ExportSetting, ImportFile
+from subnet_tracker.textio.lines import MAX_GROUP_NAME, MAX_TAG_NAME
+from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute, ExportSetting, ImportFile, SettingLine
 from subnet_tracker.textio.parse import parse_import
-from subnet_tracker.types import DomainName, Timestamp
+from subnet_tracker.types import PREFIX_V4, PREFIX_V6, DomainName, Timestamp
 from textio_strategies import LINE_BREAKS, one_line_text, trimmed_text
 
 HEADER = "# subnet-tracker export v1\n"
@@ -216,6 +219,35 @@ def test_parse_import_reads_the_export_back(model: ExportFile) -> None:
     assert parsed.errors == ()
     assert parsed.value.duplicates == ()
     assert _contents(_exported(parsed.value)) == _contents(model)
+
+
+def _stored_setting(line: SettingLine) -> ExportSetting | None:
+    value = parse_setting(line.key, line.value)
+    assert isinstance(value, SettingValue), value
+    return None if value.is_default else ExportSetting(value.key, value.text)
+
+
+def _as_stored(parsed: ImportFile) -> ExportFile:
+    # what import stores and the CLI export reads back: defaults are never stored, groups come from sections and @ references
+    exported = _exported(parsed)
+    referenced = {n for d in exported.domains for n in d.groups} | {n for r in exported.routes for n in r.groups}
+    referenced -= {g.name for g in exported.groups}
+    settings = tuple(s for line in parsed.settings if (s := _stored_setting(line)))
+    return replace(exported, settings=settings, groups=exported.groups + tuple(ExportGroup(name) for name in referenced))
+
+
+def _design_examples() -> list[str]:
+    design = (Path(__file__).parents[1] / "docs" / "design.md").read_text(encoding="utf-8")
+    section = design[design.index("\n## 12. ") : design.index("\n## 13. ")]
+    return re.findall(r"^```\n(.*?)^```$", section, re.DOTALL | re.MULTILINE)
+
+
+def test_hand_written_design_example_exports_as_the_literal_one() -> None:
+    hand_written, literal = _design_examples()
+    parsed = parse_import(hand_written)
+    assert parsed.errors == ()
+    assert parsed.value.duplicates == ()
+    assert render_export(_as_stored(parsed.value)) == literal
 
 
 @given(models(), st.randoms(use_true_random=False))
