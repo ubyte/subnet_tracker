@@ -3,6 +3,7 @@ from hashlib import sha256
 from ipaddress import IPv4Address, IPv6Address, ip_network
 from random import Random
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -71,6 +72,24 @@ def test_hash_follows_every_push_line() -> None:
     assert len(hashes) == 5
     text = render_routes(plan_of("1.0.0.0/24"), GENERATED).text
     assert routes_hash(text.replace("1.0.0.0 ", "1.0.0.1 ")) != routes_hash(text)
+
+
+@pytest.mark.parametrize("line", ["push-reset", "iroute 10.0.0.0 255.0.0.0", "disable", "garbage", '  push "route 2.0.0.0 255.255.255.0"', '\tpush "route 2.0.0.0 255.255.255.0"'])
+def test_hash_covers_every_line_openvpn_reads(line: str) -> None:
+    text = render_routes(plan_of("1.0.0.0/24"), GENERATED).text
+    assert routes_hash(f"{text}{line}\n") != routes_hash(text)
+    assert routes_hash(f"{line}\n{text}") != routes_hash(text)
+
+
+def test_hash_covers_indented_push_line() -> None:
+    text = render_routes(plan_of("1.0.0.0/24", "2.0.0.0/24"), GENERATED).text
+    assert routes_hash(text.replace('push "route 2', '  push "route 2')) not in {routes_hash(text), render_routes(plan_of("1.0.0.0/24"), GENERATED).sha256}
+
+
+@pytest.mark.parametrize("line", ["# x", "; x", "  # x", "\t; x", "", "   ", "\t"])
+def test_hash_ignores_comments_and_blank_lines(line: str) -> None:
+    text = render_routes(plan_of("1.0.0.0/24"), GENERATED).text
+    assert routes_hash(f"{line}\n{text}{line}\n") == routes_hash(text)
 
 
 def test_empty_plan() -> None:
