@@ -1,6 +1,12 @@
 import sqlite3
 from ipaddress import ip_address
 
+from addresses_world import answer, record, resolver, rows, tracked
+from doh_samples import AAAA, CLOUDFLARE_CNAME_A, A, body
+from doh_samples import record as doh_record
+from domains_world import NOW
+from subnet_tracker.core.addresses import Resolution, name_resolves, request_external
+from subnet_tracker.core.events import EventFilter, EventKind, list_events
 from subnet_tracker.core.external import (
     LEASE,
     MAX_RESULTS,
@@ -16,13 +22,6 @@ from subnet_tracker.core.external import (
     assign_tasks,
     select_tasks,
 )
-
-from addresses_world import answer, record, resolver, rows, tracked
-from doh_samples import AAAA, CLOUDFLARE_CNAME_A, A, body
-from doh_samples import record as doh_record
-from domains_world import NOW
-from subnet_tracker.core.addresses import Resolution, name_resolves, request_external
-from subnet_tracker.core.events import EventFilter, EventKind, list_events
 from subnet_tracker.core.requests import Apply, RequestKind, decode_request
 from subnet_tracker.core.settings import SettingError
 from subnet_tracker.core.settings_store import set_setting
@@ -175,8 +174,9 @@ def test_a_result_is_recorded_at_server_time_the_lease_drops_and_apply_is_queued
     agent = external(db, ResolverKind.AGENT, "laptop")
     tune(db, "agent.batch", "10")
     a, _www = tracked(db, "a.com www.a.com")
-    assign_tasks(db, agent, NOW)
+    record(db, answer(a, agent, Resolution(ResolveStatus.NXDOMAIN)), at=NOW)
     request_external(db, Timestamp(NOW + 1), [a])
+    assign_tasks(db, agent, Timestamp(NOW + 1))
     outcome = accepted(accept_results(db, agent, [reported("a.com", "ok", ("192.0.2.9",), cnames=("edge.a.net",))], "agent:laptop", Timestamp(NOW + 5)))
     assert outcome.recorded == 1
     assert outcome.rejected == ()
@@ -187,7 +187,7 @@ def test_a_result_is_recorded_at_server_time_the_lease_drops_and_apply_is_queued
     assert stored.requested_at == NOW + 1
     assert rows(db, "SELECT ip FROM addresses WHERE name_id = ?", a) == [("192.0.2.9",)]
     assert rows(db, "SELECT last_attempt_at, last_success_at FROM names WHERE id = ?", a) == [(NOW + 5, NOW + 5)]
-    assert leases(db) == [(_www, agent, NOW + LEASE)]
+    assert leases(db) == [(_www, agent, NOW + 1 + LEASE)]
     assert [decode_request(RequestKind(kind), payload) for kind, payload in rows(db, "SELECT kind, payload FROM requests")] == [Apply(ReconnectMode.AUTO)]
     events = list_events(db, EventFilter(10))
     assert [(event.kind, event.actor, event.details["ip"]) for event in events] == [(EventKind.ADDRESS_NEW, "agent:laptop", "192.0.2.9")]
@@ -299,7 +299,7 @@ def test_silence_closes_at_ten_minutes_and_the_next_result_opens_the_next_sessio
     tracked(db, "a.com www.a.com")
     accepted(accept_results(db, agent, [reported("a.com", "ok", ("192.0.2.1",)), reported("www.a.com", "nxdomain")], "agent:laptop", T0))
     later = Timestamp(T0 + SILENCE)
-    accepted(accept_results(db, agent, [reported("www.a.com", "ok", ("2001:db8::2",))], "agent:laptop", later))
+    accepted(accept_results(db, agent, [ReportedResult("www.a.com", "ok", (), ("2001:db8::2",))], "agent:laptop", later))
     assert runs(db) == [
         ("agent", agent, T0, T0 + SILENCE, 2, 1, 0),
         ("agent", agent, later, None, 1, 1, 0),
