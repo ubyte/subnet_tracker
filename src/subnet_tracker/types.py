@@ -2,7 +2,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum, auto
-from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
+from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
 from typing import NewType
 
 type IPAddress = IPv4Address | IPv6Address
@@ -189,3 +189,7 @@ def parse_ip_range(text: str) -> IpRange:
         return _ip_range(text)
     except ValueError as e:
         raise ValueError(f"invalid address range {text!r}: {e}") from None
+
+
+def zone_error(net: IPv4Network | IPv6Network) -> str | None:
+    return "zone index is not routable" if isinstance(net, IPv6Network) and net.network_address.scope_id else None

@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 import idna
 
 from subnet_tracker.discovery.www import DomainNames, domain_names, pair_name
-from subnet_tracker.types import DomainName, ParseError, ParseResult
+from subnet_tracker.types import DomainName, ParseError, ParseResult, zone_error
 
 type Network = IPv4Network | IPv6Network
 
@@ -59,7 +59,7 @@ def _network(text: str) -> Network | None:
 
 
 def _routable(net: Network) -> Network | Rejected:
-    return Rejected("zone index is not routable") if isinstance(net, IPv6Network) and net.network_address.scope_id else net
+    return net if (error := zone_error(net)) is None else Rejected(error)
 
 
 def _hostname(token: str) -> str | None:

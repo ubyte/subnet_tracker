@@ -2,12 +2,12 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum, auto
-from ipaddress import IPv6Network, ip_network
+from ipaddress import ip_network
 
 from subnet_tracker.discovery.parse import Network, Rejected, normalize_name
 from subnet_tracker.textio.model import DomainLine, GroupSection, RouteLine
 from subnet_tracker.textio.tokens import QUOTED, Tokens, Word, tokens, unescape
-from subnet_tracker.types import PREFIX_V4, PREFIX_V6, ParseError, ParseResult
+from subnet_tracker.types import PREFIX_V4, PREFIX_V6, ParseError, ParseResult, zone_error
 
 MAX_GROUP_NAME = 100
 MAX_TAG_NAME = 50
@@ -146,7 +146,7 @@ def _network(text: str) -> Network | Rejected:
         net = ip_network(text, strict=False)
     except ValueError:
         return Rejected("not an address or CIDR")
-    return Rejected("zone index is not routable") if isinstance(net, IPv6Network) and net.network_address.scope_id else net
+    return net if (error := zone_error(net)) is None else Rejected(error)
 
 
 def route_line(line: int, text: str) -> ParseResult[RouteLine | None]:

@@ -3,11 +3,11 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from ipaddress import IPv6Network, ip_network
+from ipaddress import ip_network
 
 from subnet_tracker.config import IPNetwork
 from subnet_tracker.discovery.parse import Rejected, normalize_name
-from subnet_tracker.types import format_duration, format_size, parse_duration, parse_size
+from subnet_tracker.types import format_duration, format_size, parse_duration, parse_size, zone_error
 
 type Json = bool | int | float | str | list[str]
 type Validate[T] = Callable[[T], None]
@@ -91,8 +91,8 @@ def _network(text: str) -> IPNetwork:
         net = ip_network(text)
     except ValueError as e:
         raise ValueError(f"invalid network {text!r}: {e}") from None
-    if isinstance(net, IPv6Network) and net.network_address.scope_id:
-        raise ValueError(f"invalid network {text!r}: zone index is not routable")
+    if (error := zone_error(net)) is not None:
+        raise ValueError(f"invalid network {text!r}: {error}")
     return net
 
 
