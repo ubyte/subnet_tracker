@@ -11,7 +11,8 @@ MAX_ADDRESSES = 64
 MAX_CHAIN = 16
 MAX_RECORDS = 256
 _MAX_NAME = 253
-_MAX_TTL = 2**31 - 1
+# a DNS TTL is an unsigned 32-bit value
+_MAX_TTL = 2**32 - 1
 _MAX_RCODE = 4095
 _MAX_ERROR = 200
 _CNAME = 5
