@@ -35,10 +35,10 @@ def test_list_starts_with_the_row_without_a_group(cli: Cli, db: sqlite3.Connecti
     assert data[1]["prefix_v4"] == 24
 
 
-def test_add_trims_the_name_and_notifies_without_apply(cli: Cli, db: sqlite3.Connection, tmp_path: Path) -> None:
+def test_add_trims_the_name_and_does_not_wake_tick(cli: Cli, db: sqlite3.Connection, tmp_path: Path) -> None:
     assert cli("group", "add", " Video ") == Result(0, "added group Video\n", "")
     assert work(db) is None
-    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}"]
+    assert trigger_lines(tmp_path) == []
     assert [e.kind for e in list_events(db, EventFilter(1))] == [EventKind.GROUP_ADDED]
 
 
@@ -50,17 +50,18 @@ def test_reserved_and_invalid_names_are_usage_errors(cli: Cli, db: sqlite3.Conne
 
 def test_edit_prefix_requests_apply_and_a_description_does_not(cli: Cli, db: sqlite3.Connection, tmp_path: Path) -> None:
     cli("group", "add", "Video")
-    (tmp_path / "trigger").unlink()
     assert cli("group", "edit", "Video", "--description", "hosting") == Result(0, 'Video: description "" -> "hosting"\n', "")
     assert work(db) is None
+    assert trigger_lines(tmp_path) == []
     assert cli("group", "edit", "Video", "--prefix4", "24", "--disable") == Result(0, "Video: prefix_v4 null -> 24, enabled true -> false\n", "")
     assert work(db) == TickWork(apply=ReconnectMode.AUTO)
+    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}"]
     assert cli("group", "edit", "Video", "--prefix4", "inherit") == Result(0, "Video: prefix_v4 24 -> null\n", "")
+    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}", f"{NOW} {ACTOR}"]
 
 
 def test_edit_that_changes_nothing_notifies_nobody(cli: Cli, db: sqlite3.Connection, tmp_path: Path) -> None:
     cli("group", "add", "Video")
-    (tmp_path / "trigger").unlink()
     assert cli("group", "edit", "Video", "--enable", "--description", "") == Result(0, "nothing changed\n", "")
     assert (count(db, "events"), trigger_lines(tmp_path)) == (1, [])
 
@@ -78,7 +79,6 @@ def test_rm_with_yes_leaves_members_and_requests_apply(cli: Cli, db: sqlite3.Con
     group = find_group(db, "Video")
     assert group is not None
     join(db, domain(db, "a.com").id, group)
-    (tmp_path / "trigger").unlink()
     assert cli("group", "rm", "Video", "--yes") == Result(0, "deleted group Video\n", "")
     assert domain(db, "a.com").updated_at == NOW
     assert work(db) == TickWork(apply=ReconnectMode.AUTO)
@@ -115,4 +115,4 @@ def test_rm_asks_on_a_terminal_and_refuses_without_one(cli: Cli, db: sqlite3.Con
     assert answering(cli, True, prompts)("group", "rm", "Video", "--with-members") == Result(0, "deleted group Video\n", "")
     assert prompts[-1] == "delete group Video and the domains and routes that belong only to it?"
     assert answering(cli, True, [])("group", "rm", "Missing") == Result(2, "", "subnet-tracker: error: name: 'Missing' does not exist\n")
-    assert trigger_lines(tmp_path)[-1:] == [f"{NOW} {ACTOR}"]
+    assert trigger_lines(tmp_path) == []

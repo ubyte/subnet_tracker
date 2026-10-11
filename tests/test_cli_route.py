@@ -41,9 +41,10 @@ def test_edit_comment_does_not_request_apply_and_groups_do(cli: Cli, db: sqlite3
     before = count(db, "requests")
     assert cli("route", "edit", "192.0.2.9/24", "--comment", "LAN") == Result(0, '192.0.2.0/24: comment "" -> "LAN"\n', "")
     assert count(db, "requests") == before
-    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}"]
+    assert trigger_lines(tmp_path) == []
     assert cli("route", "edit", "192.0.2.0/24", "--add-group", "Video", "--disable") == Result(0, '192.0.2.0/24: enabled true -> false, groups [] -> ["Video"]\n', "")
     assert work(db) == TickWork(apply=ReconnectMode.AUTO)
+    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}"]
 
 
 def test_edit_without_options_or_an_unknown_route_writes_nothing(cli: Cli, db: sqlite3.Connection) -> None:

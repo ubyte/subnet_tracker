@@ -1,8 +1,8 @@
 import sqlite3
 from pathlib import Path
 
-from cli_world import ACTOR, NOW, Cli, Result, trigger_lines
-from domains_world import count, paste
+from cli_world import Cli, Result, trigger_lines
+from domains_world import NOW, count, paste
 from groups_world import domain
 from subnet_tracker.cli.output import table
 from subnet_tracker.core.events import EventFilter, EventKind, list_events
@@ -29,7 +29,7 @@ def test_rename_merge_and_delete(cli: Cli, db: sqlite3.Connection, tmp_path: Pat
     assert find_tag(db, "video") is None
     assert domain(db, "a.com").updated_at == NOW
     assert claim_requests(db) is None
-    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}"]
+    assert trigger_lines(tmp_path) == []
     assert [e.kind for e in list_events(db, EventFilter(1))] == [EventKind.TAG_MERGED]
     assert cli("tag", "rm", "films") == Result(0, "deleted tag films\n", "")
     assert count(db, "tags") == 0

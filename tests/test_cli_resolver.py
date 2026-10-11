@@ -30,7 +30,7 @@ def test_list_shows_the_resolvers_created_by_migrate(cli: Cli, tmp_path: Path) -
     assert added["position"] == 6
     with closing(connect(tmp_path / "state.db")) as conn:
         assert claim_requests(conn) is None
-    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}"]
+    assert trigger_lines(tmp_path) == []
 
 
 def test_add_edit_and_delete(cli: Cli, db: sqlite3.Connection, tmp_path: Path) -> None:
@@ -38,13 +38,21 @@ def test_add_edit_and_delete(cli: Cli, db: sqlite3.Connection, tmp_path: Path) -
     rows = [("no", "Quad9", "dns", "udp://9.9.9.9", "20")]
     assert cli("resolver", "list") == Result(0, table(("routes", "name", "kind", "endpoint", "qps"), rows) + "\n", "")
     assert work(db) is None
-    (tmp_path / "trigger").unlink()
-    assert cli("resolver", "edit", "Quad9", "--max-qps", "10") == Result(0, "Quad9: max_qps 20 -> 10\n", "")
+    assert trigger_lines(tmp_path) == []
+    edited = cli("resolver", "edit", "Quad9", "--name", "Quad", "--endpoint", "udp://1.1.1.1", "--max-qps", "10")
+    assert edited == Result(0, 'Quad: name "Quad9" -> "Quad", endpoint "udp://9.9.9.9" -> "udp://1.1.1.1", max_qps 20 -> 10\n', "")
     assert work(db) is None
-    assert cli("resolver", "edit", "Quad9", "--routes") == Result(0, "Quad9: use_for_routes false -> true\n", "")
+    assert trigger_lines(tmp_path) == []
+    assert cli("resolver", "edit", "Quad", "--routes") == Result(0, "Quad: use_for_routes false -> true\n", "")
     assert work(db) == TickWork(apply=ReconnectMode.AUTO)
+    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}"]
     assert [e.kind for e in list_events(db, EventFilter(1))] == [EventKind.RESOLVER_CHANGED]
-    assert cli("resolver", "rm", "Quad9") == Result(0, "deleted resolver Quad9\n", "")
+    kept = cli("resolver", "add", "Spare", "--kind", "system", "--no-routes")
+    assert kept.code == 0
+    assert cli("resolver", "rm", "Spare") == Result(0, "deleted resolver Spare\n", "")
+    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}"]
+    assert cli("resolver", "rm", "Quad") == Result(0, "deleted resolver Quad\n", "")
+    assert trigger_lines(tmp_path) == [f"{NOW} {ACTOR}", f"{NOW} {ACTOR}"]
     assert count(db, "resolvers") == 0
 
 
