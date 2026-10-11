@@ -236,6 +236,21 @@ def _fed_addresses(snapshot: Snapshot, groups: Mapping[GroupId, Group], settings
     return fed
 
 
+def _builtin_of(ip: IPAddress) -> Exclusion | None:
+    return next((e for e in BUILTIN_EXCLUSIONS if ip in e.network), None)
+
+
+def _drop_builtin(fed: Iterable[Fed]) -> tuple[list[Fed], list[PlanWarning]]:
+    kept: list[Fed] = []
+    dropped: dict[IPAddress, Exclusion] = {}
+    for ip, source in fed:
+        if (builtin := _builtin_of(ip)) is None:
+            kept.append((ip, source))
+        else:
+            dropped[ip] = builtin
+    return kept, [PlanWarning(WarningKind.EXCLUDED, ip_network(ip), e) for ip, e in sorted(dropped.items(), key=lambda item: (item[0].version, int(item[0])))]
+
+
 def _cut[N: (IPv4Network, IPv6Network)](piece: N, hole: N) -> Iterable[N]:
     if not piece.overlaps(hole):
         return (piece,)
@@ -296,11 +311,11 @@ def _order(route: Route) -> tuple[int, int, int]:
 
 def plan_routes(snapshot: Snapshot, settings: PlanSettings) -> RoutePlan:
     groups = {g.id: g for g in snapshot.groups}
-    fed = _fed_addresses(snapshot, groups, settings)
+    fed, dropped = _drop_builtin(_fed_addresses(snapshot, groups, settings))
     excluded = exclusions(settings)
     global_routes = [r for r in snapshot.global_routes if settings.pushes(r.network.version) and routable(r.enabled, r.groups, groups)]
     routes_v4, warnings_v4, networks_v4 = _dns_routes(IPv4Network, fed, excluded, global_routes)
     routes_v6, warnings_v6, networks_v6 = _dns_routes(IPv6Network, fed, excluded, global_routes)
     routes = sorted([*routes_v4, *routes_v6, *(Route(r.network, RouteKind.GLOBAL, global_route_id=r.id) for r in global_routes)], key=_order)
     stats = PlanStats(networks_v4, networks_v6, sum(r.network.version == 4 for r in routes), sum(r.network.version == 6 for r in routes))
-    return RoutePlan(tuple(routes), stats, (*warnings_v4, *warnings_v6))
+    return RoutePlan(tuple(routes), stats, (*dropped, *warnings_v4, *warnings_v6))
