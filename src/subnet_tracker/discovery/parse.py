@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 import idna
 
-from subnet_tracker.discovery.www import DomainNames, domain_names, pair_name
+from subnet_tracker.discovery.www import DomainNames, deduplicate, pair_name
 from subnet_tracker.types import DomainName, ParseError, ParseResult, zone_error
 
 type Network = IPv4Network | IPv6Network
@@ -89,12 +89,10 @@ def _tokens(text: str) -> Iterator[tuple[int, str]]:
 
 
 def parse_paste(text: str, existing: Container[DomainName]) -> ParseResult[PastePlan]:
-    domains: list[DomainNames] = []
-    duplicates: list[DomainName] = []
+    names: list[DomainName] = []
     networks: dict[Network, None] = {}
     wildcards: dict[DomainName, None] = {}
     errors: list[ParseError] = []
-    taken: set[DomainName] = set()
     for line, token in _tokens(text):
         match _classify(token):
             case Rejected(reason):
@@ -102,12 +100,8 @@ def parse_paste(text: str, existing: Container[DomainName]) -> ParseResult[Paste
             case _Host(name, wildcard):
                 if wildcard:
                     wildcards[name] = None
-                names = domain_names(name)
-                if any(n in existing or n in taken for n in names.all):
-                    duplicates.append(name)
-                else:
-                    domains.append(names)
-                    taken.update(names.all)
+                names.append(name)
             case net:
                 networks[net] = None
-    return ParseResult(PastePlan(tuple(domains), tuple(duplicates), tuple(networks), tuple(wildcards)), tuple(errors))
+    found = deduplicate(names, existing)
+    return ParseResult(PastePlan(found.new_domains, found.duplicates, tuple(networks), tuple(wildcards)), tuple(errors))

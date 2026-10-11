@@ -127,6 +127,24 @@ class ParseResult[T]:
         return not self.errors
 
 
+@dataclass(frozen=True, slots=True)
+class FieldError:
+    field: str
+    message: str
+
+
+def one_line_text(field: str, text: str) -> str | FieldError:
+    if "".join(text.splitlines()) != text:
+        return FieldError(field, "line breaks are not allowed")
+    return text.strip()
+
+
+def check_prefix(field: str, prefix: int | None, limits: range) -> FieldError | None:
+    if prefix is None or prefix in limits:
+        return None
+    return FieldError(field, f"prefix /{prefix} is out of range, expected {limits.start} to {limits.stop - 1}")
+
+
 _DURATION = re.compile(r"([0-9]+)([smhd])")
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _SIZE = re.compile(r"([0-9]+)(B|KB|MB|GB)")
