@@ -35,7 +35,7 @@ def test_bad_arguments_are_usage_errors(cli: Cli, argv: tuple[str, ...]) -> None
 def test_help_lists_the_commands(cli: Cli) -> None:
     result = cli("--help")
     assert (result.code, result.err) == (0, "")
-    assert all(name in result.out for name in ("settings", "db"))
+    assert all(name in result.out for name in ("settings", "db", "add", "domain", "batch"))
 
 
 def test_defaults_are_the_installed_paths_and_the_unix_user(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cli_world import ACTOR, NOW, Cli, Result
+from cli_world import ACTOR, NOW, Cli, Result, trigger_lines
 from db_rows import insert
 from domains_world import count
 from subnet_tracker.cli.commands.settings import settings_table, update_text
@@ -17,11 +17,6 @@ from subnet_tracker.types import ReconnectMode, Seconds, Timestamp
 
 def written(db: sqlite3.Connection) -> tuple[int, int, int]:
     return count(db, "settings"), count(db, "events"), count(db, "requests")
-
-
-def trigger_lines(tmp_path: Path) -> list[str]:
-    trigger = tmp_path / "trigger"
-    return trigger.read_text().splitlines() if trigger.exists() else []
 
 
 def test_table_has_key_value_and_default() -> None:

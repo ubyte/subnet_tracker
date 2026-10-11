@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -43,5 +43,30 @@ def write_config(path: Path, db: Path) -> Path:
     return path
 
 
+def no_stdin() -> str:
+    raise AssertionError("the command reads stdin")
+
+
+def no_terminal(prompt: str) -> bool | None:
+    return None
+
+
 def make_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Cli:
-    return Cli(write_config(tmp_path / "config.toml", tmp_path / "state.db"), Runtime(tmp_path / "trigger", lambda: NOW, lambda: USER), capsys)
+    return Cli(write_config(tmp_path / "config.toml", tmp_path / "state.db"), Runtime(tmp_path / "trigger", lambda: NOW, lambda: USER, no_stdin, no_terminal), capsys)
+
+
+def reading(cli: Cli, text: str) -> Cli:
+    return replace(cli, runtime=replace(cli.runtime, stdin=lambda: text))
+
+
+def answering(cli: Cli, answer: bool | None, prompts: list[str]) -> Cli:
+    def confirm(prompt: str) -> bool | None:
+        prompts.append(prompt)
+        return answer
+
+    return replace(cli, runtime=replace(cli.runtime, confirm=confirm))
+
+
+def trigger_lines(tmp_path: Path) -> list[str]:
+    trigger = tmp_path / "trigger"
+    return trigger.read_text().splitlines() if trigger.exists() else []
