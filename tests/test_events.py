@@ -23,7 +23,7 @@ def test_kinds_are_dotted_and_unique() -> None:
 
 
 def test_kinds_named_by_the_design() -> None:
-    named = {"domain.added", "domain.deleted", "address.new", "address.expired", "agent.created", "agent.revoked", "agent.rejected", "reconnect.done", "setting.changed"}
+    named = {"domain.added", "domain.changed", "domain.deleted", "address.new", "address.expired", "agent.created", "agent.revoked", "agent.rejected", "reconnect.done", "setting.changed"}
     assert named <= {k.value for k in EventKind}
 
 
