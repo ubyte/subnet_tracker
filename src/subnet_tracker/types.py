@@ -144,6 +144,8 @@ def one_line_text(field: str, text: str) -> str | FieldError:
 
 
 def check_prefix(field: str, prefix: int | None, limits: range) -> FieldError | None:
+    if isinstance(prefix, bool):
+        return FieldError(field, f"prefix must be an integer, got {prefix}")
     if prefix is None or prefix in limits:
         return None
     return FieldError(field, f"prefix /{prefix} is out of range, expected {limits.start} to {limits.stop - 1}")
