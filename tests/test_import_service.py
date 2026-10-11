@@ -243,6 +243,71 @@ def test_a_line_outside_the_filter_is_not_imported(db: sqlite3.Connection) -> No
     assert db.execute("SELECT 1 FROM names WHERE name = 'a.com'").fetchone() is None
 
 
+def test_a_line_that_names_a_domain_outside_the_filter_is_skipped(db: sqlite3.Connection) -> None:
+    video = make_group(db, "Video")
+    paste(db, "a.com b.com")
+    outside = domain(db, "a.com")
+    join(db, outside.id, video)
+    db.execute("UPDATE domains SET prefix_v4 = 20, comment = ? WHERE id = ?", ("kept", outside.id))
+    text = "b.com ; fresh\nwww.a.com /24 ; overwritten\nc.com\n"
+    preview = preview_import(db, text, REPLACE, ("none",), NONE, ())
+    planned = {item.name for item in (*preview.diff.domains.added, *preview.diff.domains.removed)}
+    planned.update(side.name for update in preview.diff.domains.updated for side in (update.old, update.new))
+    assert planned.isdisjoint({"a.com", "www.a.com"})
+    result = apply_import(db, text, REPLACE, ("none",), NONE, (), ACTOR, NOW)
+    assert result.applied
+    assert result.rejected == ()
+    kept = domain(db, "a.com")
+    assert kept.id == outside.id
+    assert (kept.prefix_v4, kept.comment) == (20, "kept")
+    assert db.execute("SELECT g.name FROM domain_groups dg JOIN groups g ON g.id = dg.group_id WHERE dg.domain_id = ?", (outside.id,)).fetchone()["name"] == "Video"
+    assert domain(db, "b.com").comment == "fresh"
+    added = domain(db, "c.com")
+    assert added.source is DomainSource.IMPORT
+    assert db.execute("SELECT count(*) FROM domains").fetchone()[0] == 3
+
+
+def test_replace_with_a_filter_defaults_a_group_the_file_only_references(db: sqlite3.Connection) -> None:
+    video = make_group(db, "Video", prefix_v4=24)
+    audio = make_group(db, "Audio", prefix_v4=20)
+    extra = make_group(db, "Extra", prefix_v4=22)
+    db.execute("UPDATE groups SET description = ? WHERE id = ?", ("hosting", video.id))
+    db.execute("UPDATE groups SET description = ? WHERE id = ?", ("sound", audio.id))
+    db.execute("UPDATE groups SET description = ? WHERE id = ?", ("side", extra.id))
+    paste(db, "a.com b.com")
+    join(db, domain(db, "a.com").id, video)
+    route(db, "10.0.0.0/8", audio)
+    db.execute("UPDATE global_routes SET comment = ? WHERE cidr = ?", ("lan", "10.0.0.0/8"))
+    set_setting(db, "resolve.interval", "2h", NOW)
+    text = "a.com @Video\n[settings]\nresolve.timeout = 10s\n\n[routes]\n10.0.0.0/8\n192.0.2.0/24 @Extra\n"
+    preview = preview_import(db, text, REPLACE, ("Video",), NONE, ())
+    updated = {item.old.name: item.new for item in preview.diff.groups.updated}
+    assert (updated["Video"].description, updated["Video"].prefix_v4, updated["Video"].prefix_v6, updated["Video"].enabled) == ("", None, None, True)
+    assert (updated["Extra"].description, updated["Extra"].prefix_v4, updated["Extra"].prefix_v6, updated["Extra"].enabled) == ("", None, None, True)
+    assert "Audio" not in updated
+    assert preview.diff.groups.removed == ()
+    assert preview.diff.routes.removed == ()
+    assert {item.network.with_prefixlen for item in preview.diff.routes.added} == {"192.0.2.0/24"}
+    assert {item.new.network.with_prefixlen for item in preview.diff.routes.updated} == {"10.0.0.0/8"}
+    assert all(change.key != "resolve.interval" for change in preview.diff.settings)
+    assert any(change.key == "resolve.timeout" for change in preview.diff.settings)
+    result = apply_import(db, text, REPLACE, ("Video",), NONE, (), ACTOR, NOW)
+    assert result.applied
+    assert result.errors == ()
+    assert result.rejected == ()
+    for name in ("Video", "Extra"):
+        reset = find_group(db, name)
+        assert reset is not None
+        assert (reset.description, reset.prefix_v4, reset.prefix_v6, reset.enabled) == ("", None, None, True)
+    kept_group = find_group(db, "Audio")
+    assert kept_group is not None
+    assert (kept_group.description, kept_group.prefix_v4) == ("sound", 20)
+    assert domain(db, "b.com").id
+    assert db.execute("SELECT comment FROM global_routes WHERE cidr = '10.0.0.0/8'").fetchone()["comment"] == ""
+    assert db.execute("SELECT 1 FROM settings WHERE key = 'resolve.interval'").fetchone() is not None
+    assert db.execute("SELECT 1 FROM settings WHERE key = 'resolve.timeout'").fetchone() is not None
+
+
 def test_server_address_and_parse_errors_write_nothing(db: sqlite3.Connection) -> None:
     from ipaddress import ip_address
 
