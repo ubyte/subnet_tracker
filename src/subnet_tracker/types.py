@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from enum import StrEnum, auto
 from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
 from typing import NewType
 
@@ -21,6 +22,85 @@ PlanRouteId = NewType("PlanRouteId", int)
 WebDeviceId = NewType("WebDeviceId", int)
 RequestId = NewType("RequestId", int)
 ResolveRunId = NewType("ResolveRunId", int)
+
+
+class BatchKind(StrEnum):
+    PASTE = auto()
+    SCAN = auto()
+    IMPORT = auto()
+    CLI = auto()
+
+
+class DomainSource(StrEnum):
+    MANUAL = auto()
+    DISCOVERED = auto()
+    IMPORT = auto()
+
+
+class ResolverKind(StrEnum):
+    SYSTEM = auto()
+    DNS = auto()
+    DOH = auto()
+    BROWSER = auto()
+    AGENT = auto()
+
+
+class AgentMode(StrEnum):
+    LOOP = auto()
+    ONCE = auto()
+
+
+class ResolveStatus(StrEnum):
+    OK = auto()
+    NODATA = auto()
+    NXDOMAIN = auto()
+    NOTFOUND = auto()
+    ERROR = auto()
+    UNREACHABLE = auto()
+
+
+class RouteKind(StrEnum):
+    DNS = auto()
+    AGGREGATED = auto()
+    GLOBAL = auto()
+
+
+class PendingReconnect(StrEnum):
+    AUTO = auto()
+    ON_LEAVE = auto()
+
+
+class RequestKind(StrEnum):
+    RESOLVE_DOMAINS = auto()
+    RESOLVE_ALL = auto()
+    APPLY = auto()
+
+
+class ResolveTrigger(StrEnum):
+    TIMER = auto()
+    MANUAL = auto()
+    NEW_DOMAINS = auto()
+    BROWSER = auto()
+    AGENT = auto()
+
+
+class ApplyTrigger(StrEnum):
+    TICK = auto()
+    MANUAL = auto()
+
+
+class ReconnectMode(StrEnum):
+    NONE = auto()
+    NOW = auto()
+    AUTO = auto()
+    ON_LEAVE = auto()
+
+
+class ApplyStatus(StrEnum):
+    OK = auto()
+    UNCHANGED = auto()
+    DEFERRED = auto()
+    ERROR = auto()
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,7 +6,7 @@
 
 Split-tunnel по доменам: комплекс отслеживает IP-адреса заданных доменов и держит у клиентов OpenVPN маршруты в сети, где эти адреса находятся. Трафик к остальным адресам идёт мимо VPN.
 
-Стек сервера: Python 3.12, SQLite, Flask, Linux, systemd. Агент на клиентах: Go (раздел 7). Интерфейс web UI, CLI и агента на английском.
+Стек сервера: Python 3.12, SQLite 3.37+ (STRICT), Flask, Linux, systemd. Агент на клиентах: Go (раздел 7). Интерфейс web UI, CLI и агента на английском.
 
 Окружение:
 - сервер OpenVPN 2.7 на Linux; комплекс работает на том же хосте. Сервер может быть IPv4-only, IPv6-only или dual-stack;
@@ -344,10 +344,10 @@ CREATE TABLE plan_routes (                  -- маршруты текущего
   first_bin       BLOB    NOT NULL,         -- первый и последний адрес сети, формат как addresses.ip_bin
   last_bin        BLOB    NOT NULL,
   kind            TEXT    NOT NULL CHECK (kind IN ('dns', 'aggregated', 'global')),
-  global_route_id INTEGER REFERENCES global_routes (id) ON DELETE SET NULL,
+  global_route_id INTEGER REFERENCES global_routes (id) ON DELETE SET NULL,   -- NULL у global: маршрут удалён, но остаётся в файле до следующего плана
   added_at        INTEGER NOT NULL,         -- когда маршрут впервые попал в файл
   reconnected     INTEGER NOT NULL CHECK (reconnected IN (0, 1)),   -- клиенты переподключались после его добавления
-  CHECK ((kind = 'global') = (global_route_id IS NOT NULL))
+  CHECK (kind = 'global' OR global_route_id IS NULL)
 ) STRICT;
 
 CREATE TABLE plan_route_parts (             -- сети из DNS, из которых собран маршрут (для kind = 'dns' — одна)
@@ -366,7 +366,7 @@ CREATE TABLE settings (                     -- типы значений зад�
 
 CREATE TABLE scheduler_state (              -- одна строка
   id                    INTEGER PRIMARY KEY CHECK (id = 1),
-  full_run_id           INTEGER,            -- текущий полный проход, NULL если не идёт
+  full_run_id           INTEGER REFERENCES resolve_runs (id) ON DELETE SET NULL,   -- текущий полный проход, NULL если не идёт
   full_cursor_name_id   INTEGER,            -- последнее обработанное имя прохода
   last_full_started_at  INTEGER,
   last_cleanup_at       INTEGER
