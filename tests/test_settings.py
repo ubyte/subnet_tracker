@@ -34,7 +34,7 @@ from subnet_tracker.core.settings import (
     reset_setting,
     set_setting,
 )
-from subnet_tracker.types import Bytes, ReconnectMode, Seconds, Timestamp
+from subnet_tracker.types import PREFIX_V4, PREFIX_V6, Bytes, ReconnectMode, Seconds, Timestamp
 
 NOW = Timestamp(1_760_000_000)
 UA_KEY = "discovery.user_agent"
@@ -228,15 +228,12 @@ def test_parse_sample(key: str) -> None:
         ("resolve.concurrency", "1", "1"),
         ("browser.refresh_mode", "off", "off"),
         ("apply.after_add", "auto", "auto"),
-        ("routes.default_prefix_v4", "32", "32"),
-        ("routes.default_prefix_v4", "1", "1"),
-        ("routes.default_prefix_v6", "128", "128"),
-        ("routes.min_aggregate_prefix_v6", "1", "1"),
         ("routes.max_v4", "100000", "100000"),
         ("routes.exclude", "", ""),
         ("routes.exclude", " , ", ""),
         ("routes.exclude", "2001:db8::1", "2001:db8::1/128"),
         ("discovery.ignore", "", ""),
+        ("discovery.ignore", "W3.ORG. w3.org。 example.com.", "w3.org, example.com"),
         ("discovery.max_bytes", "1024KB", "1MB"),
         ("discovery.max_bytes", "1B", "1B"),
         ("routes.retention", "0s", "0s"),
@@ -285,21 +282,20 @@ def test_parse_canonical(key: str, text: str, canonical: str) -> None:
         ("apply.strategy", "auto", "expected one of reconnect, none, got 'auto'"),
         ("apply.after_add", "none", "expected one of on_leave, auto, now, got 'none'"),
         ("apply.after_add", "ON_LEAVE", "expected one of on_leave, auto, now, got 'ON_LEAVE'"),
-        ("routes.default_prefix_v4", "0", "between 1 and 32"),
-        ("routes.default_prefix_v4", "33", "between 1 and 32"),
-        ("routes.default_prefix_v6", "129", "between 1 and 128"),
-        ("routes.min_aggregate_prefix_v4", "0", "between 1 and 32"),
-        ("routes.min_aggregate_prefix_v6", "200", "between 1 and 128"),
         ("discovery.max_bytes", "0B", "at least 1B"),
         ("discovery.max_bytes", "5 MB", "invalid size '5 MB'"),
         ("discovery.max_bytes", "5", "invalid size '5'"),
         ("routes.exclude", "10.0.0.1/8", "invalid network '10.0.0.1/8'"),
         ("routes.exclude", "10.0.0.0/8 nonsense", "invalid network 'nonsense'"),
         ("routes.exclude", "10.0.0.0/33", "invalid network '10.0.0.0/33'"),
+        ("routes.exclude", "fe80::1%eth0", "invalid network 'fe80::1%eth0': zone index is not routable"),
+        ("routes.exclude", "10.0.0.0/8 fe80::%eth0/64", "invalid network 'fe80::%eth0/64': zone index is not routable"),
+        ("routes.exclude", "fe80::1%eth0/64", "invalid network 'fe80::1%eth0/64'"),
         ("discovery.ignore", "w3.org bad_domain!", "invalid domain name 'bad_domain!'"),
         ("discovery.ignore", "a..b", "invalid domain name 'a..b'"),
         ("discovery.ignore", "-a.com", "invalid domain name '-a.com'"),
-        ("discovery.ignore", "example.com.", "invalid domain name 'example.com.'"),
+        ("discovery.ignore", "localhost", "invalid domain name 'localhost': a single label is not a domain name"),
+        ("discovery.ignore", "example.123", "invalid domain name 'example.123': numeric top-level label"),
         ("discovery.user_agent", "", "1 to 512 printable ASCII characters"),
         ("discovery.user_agent", "a\r\nX-Injected: 1", "1 to 512 printable ASCII characters"),
         ("discovery.user_agent", "агент", "1 to 512 printable ASCII characters"),
@@ -311,6 +307,18 @@ def test_parse_rejects(key: str, text: str, message: str) -> None:
     assert isinstance(error, SettingError)
     assert error.key == key
     assert message in error.message
+
+
+@pytest.mark.parametrize(
+    ("key", "limits"), [("routes.default_prefix_v4", PREFIX_V4), ("routes.min_aggregate_prefix_v4", PREFIX_V4), ("routes.default_prefix_v6", PREFIX_V6), ("routes.min_aggregate_prefix_v6", PREFIX_V6)]
+)
+def test_prefix_limits_match_schema(key: str, limits: range) -> None:
+    low, high = limits[0], limits[-1]
+    assert (low, high) == ((8, 32) if key.endswith("v4") else (16, 128))
+    for inside in (low, high):
+        assert isinstance(parse_setting(key, str(inside)), SettingValue)
+    for outside in (low - 1, high + 1):
+        assert parse_setting(key, str(outside)) == SettingError(key, f"must be between {low} and {high}")
 
 
 def test_unknown_key_rejected(db: sqlite3.Connection) -> None:
