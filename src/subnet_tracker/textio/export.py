@@ -84,7 +84,7 @@ def _render(model: ExportFile) -> str:
         _section("[routes]", map(_route, sorted(model.routes, key=lambda r: network_order(r.network)))),
     ]
     if model.addresses is not None:
-        blocks.append(["[addresses]", *map(_address, sorted(model.addresses, key=lambda a: (a.name, a.ip.version, int(a.ip), a.resolver)))])
+        blocks.append(["[addresses]", *map(_address, sorted(model.addresses, key=lambda a: (a.name, a.ip.version, int(a.ip), a.resolver, a.first_seen, a.last_seen)))])
     return "\n\n".join([f"# subnet-tracker export v{FORMAT_VERSION}", *("\n".join(b) for b in blocks if b)]) + "\n"
 
 

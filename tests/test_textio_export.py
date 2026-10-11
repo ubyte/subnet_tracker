@@ -114,6 +114,11 @@ def test_addresses_are_rendered_only_when_given() -> None:
     assert render_export(ExportFile(addresses=())) == HEADER + "\n[addresses]\n"
 
 
+def test_addresses_with_the_same_name_ip_and_resolver_are_ordered_by_times() -> None:
+    early, late = (ExportAddress(DomainName("a.com"), ip_address("9.0.0.1"), "system", T0, Timestamp(T0 + shift)) for shift in (0, 300))
+    assert render_export(ExportFile(addresses=(late, early))) == render_export(ExportFile(addresses=(early, late)))
+
+
 _NET = ip_network("10.0.0.0/8")
 _IP = ip_address("9.0.0.1")
 
