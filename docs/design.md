@@ -344,10 +344,10 @@ CREATE TABLE plan_routes (                  -- маршруты текущего
   first_bin       BLOB    NOT NULL,         -- первый и последний адрес сети, формат как addresses.ip_bin
   last_bin        BLOB    NOT NULL,
   kind            TEXT    NOT NULL CHECK (kind IN ('dns', 'aggregated', 'global')),
-  global_route_id INTEGER REFERENCES global_routes (id) ON DELETE SET NULL,
+  global_route_id INTEGER REFERENCES global_routes (id) ON DELETE SET NULL,   -- NULL у global: маршрут удалён, но остаётся в файле до следующего плана
   added_at        INTEGER NOT NULL,         -- когда маршрут впервые попал в файл
   reconnected     INTEGER NOT NULL CHECK (reconnected IN (0, 1)),   -- клиенты переподключались после его добавления
-  CHECK ((kind = 'global') = (global_route_id IS NOT NULL))
+  CHECK (kind = 'global' OR global_route_id IS NULL)
 ) STRICT;
 
 CREATE TABLE plan_route_parts (             -- сети из DNS, из которых собран маршрут (для kind = 'dns' — одна)
