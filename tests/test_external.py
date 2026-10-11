@@ -22,10 +22,10 @@ from subnet_tracker.core.external import (
     assign_tasks,
     select_tasks,
 )
-from subnet_tracker.core.requests import Apply, RequestKind, decode_request
+from subnet_tracker.core.requests import Apply, decode_request
 from subnet_tracker.core.settings import SettingError
 from subnet_tracker.core.settings_store import set_setting
-from subnet_tracker.types import DomainName, NameId, ReconnectMode, ResolverId, ResolverKind, ResolveStatus, Seconds, Timestamp
+from subnet_tracker.types import DomainName, NameId, ReconnectMode, RequestKind, ResolverId, ResolverKind, ResolveStatus, Seconds, Timestamp
 
 M = Seconds(1000)
 T0 = Timestamp(1_000_000)
@@ -188,7 +188,12 @@ def test_a_result_is_recorded_at_server_time_the_lease_drops_and_apply_is_queued
     assert rows(db, "SELECT ip FROM addresses WHERE name_id = ?", a) == [("192.0.2.9",)]
     assert rows(db, "SELECT last_attempt_at, last_success_at FROM names WHERE id = ?", a) == [(NOW + 5, NOW + 5)]
     assert leases(db) == [(_www, agent, NOW + 1 + LEASE)]
-    assert [decode_request(RequestKind(kind), payload) for kind, payload in rows(db, "SELECT kind, payload FROM requests")] == [Apply(ReconnectMode.AUTO)]
+    decoded = []
+    for kind, payload in rows(db, "SELECT kind, payload FROM requests"):
+        assert isinstance(kind, str)
+        assert isinstance(payload, str)
+        decoded.append(decode_request(RequestKind(kind), payload))
+    assert decoded == [Apply(ReconnectMode.AUTO)]
     events = list_events(db, EventFilter(10))
     assert [(event.kind, event.actor, event.details["ip"]) for event in events] == [(EventKind.ADDRESS_NEW, "agent:laptop", "192.0.2.9")]
 

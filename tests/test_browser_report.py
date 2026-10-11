@@ -2,9 +2,9 @@ import json
 from ipaddress import ip_address
 
 import pytest
-from subnet_tracker.resolver.browser_report import BrowserReport, BrowserReportError, ElementRejection, parse_browser_report
 
 from doh_samples import AAAA, CLOUDFLARE_A, CLOUDFLARE_CNAME_A, A, body, record
+from subnet_tracker.resolver.browser_report import BrowserReport, BrowserReportError, ElementRejection, parse_browser_report
 from subnet_tracker.resolver.model import NameResult
 from subnet_tracker.types import DomainName, ResolverId, ResolveStatus
 
@@ -28,7 +28,7 @@ _MISSING = _Missing()
 
 
 def parsed(payload: object) -> BrowserReport:
-    report = parse_browser_report(payload)  # type: ignore[arg-type]
+    report = parse_browser_report(payload)
     assert isinstance(report, BrowserReport)
     return report
 
