@@ -123,7 +123,7 @@ def test_assign_reads_n_and_m_for_the_resolver_kind_and_leases_for_five_minutes(
     tune(db, "browser.batch", "1")
     tune(db, "agent.batch", "10")
     tune(db, "agent.max_age", "60s")
-    a, www = tracked(db, "a.com")
+    a, www = tracked(db, "a.com www.a.com")
     record(db, answer(a, agent, Resolution(ResolveStatus.ERROR, error="timeout")), at=NOW - 61)
     browser_tasks = assign_tasks(db, browser, NOW)
     agent_tasks = assign_tasks(db, agent, NOW)
@@ -138,7 +138,7 @@ def test_assign_reads_n_and_m_for_the_resolver_kind_and_leases_for_five_minutes(
 def test_a_second_assign_skips_the_lease_until_it_expires(db: sqlite3.Connection) -> None:
     browser = external(db, ResolverKind.BROWSER, "browser")
     tune(db, "browser.batch", "10")
-    a, www = tracked(db, "a.com")
+    a, www = tracked(db, "a.com www.a.com")
     assert names_of(assign_tasks(db, browser, NOW)) == ["a.com", "www.a.com"]
     second = assign_tasks(db, browser, Timestamp(NOW + LEASE - 1))
     assert names_of(second) == []
@@ -152,7 +152,7 @@ def test_www_and_a_recent_error_stay_out_while_an_old_error_and_resolve_now_are_
     browser = external(db, ResolverKind.BROWSER, "browser")
     tune(db, "browser.batch", "10")
     tune(db, "browser.max_age", "1000s")
-    a, www = tracked(db, "a.com")
+    a, www = tracked(db, "a.com www.a.com")
     record(db, answer(a, browser, Resolution(ResolveStatus.ERROR, error="timeout")), answer(www, browser, Resolution(ResolveStatus.NXDOMAIN)), at=NOW)
     assert names_of(assign_tasks(db, browser, Timestamp(NOW + M))) == []
     assert names_of(assign_tasks(db, browser, Timestamp(NOW + M + 1))) == ["a.com", "www.a.com"]
@@ -174,7 +174,7 @@ def test_assign_refuses_a_missing_resolver_and_a_server_resolver(db: sqlite3.Con
 def test_a_result_is_recorded_at_server_time_the_lease_drops_and_apply_is_queued(db: sqlite3.Connection) -> None:
     agent = external(db, ResolverKind.AGENT, "laptop")
     tune(db, "agent.batch", "10")
-    a, _www = tracked(db, "a.com")
+    a, _www = tracked(db, "a.com www.a.com")
     assign_tasks(db, agent, NOW)
     request_external(db, Timestamp(NOW + 1), [a])
     outcome = accepted(accept_results(db, agent, [reported("a.com", "ok", ("192.0.2.9",), cnames=("edge.a.net",))], "agent:laptop", Timestamp(NOW + 5)))
@@ -195,7 +195,7 @@ def test_a_result_is_recorded_at_server_time_the_lease_drops_and_apply_is_queued
 
 def test_an_invalid_result_keeps_its_lease_and_writes_nothing(db: sqlite3.Connection) -> None:
     agent = external(db, ResolverKind.AGENT, "laptop")
-    a, _www = tracked(db, "a.com")
+    a, _www = tracked(db, "a.com www.a.com")
     assign_tasks(db, agent, NOW)
     outcome = accepted(
         accept_results(
@@ -241,7 +241,7 @@ def test_an_invalid_result_keeps_its_lease_and_writes_nothing(db: sqlite3.Connec
 
 def test_sixty_four_addresses_are_recorded_and_a_browser_unreachable_is_refused(db: sqlite3.Connection) -> None:
     browser = external(db, ResolverKind.BROWSER, "browser")
-    _a, www = tracked(db, "a.com")
+    _a, www = tracked(db, "a.com www.a.com")
     ipv4 = tuple(f"192.0.2.{i}" for i in range(64))
     outcome = accepted(accept_results(db, browser, [reported("a.com", "ok", ipv4), reported("www.a.com", "unreachable", error="down")], "browser:10.8.0.6", NOW))
     assert outcome.recorded == 1
@@ -252,7 +252,7 @@ def test_sixty_four_addresses_are_recorded_and_a_browser_unreachable_is_refused(
 
 def test_more_than_500_results_refuse_the_request_and_500_are_checked_one_by_one(db: sqlite3.Connection) -> None:
     agent = external(db, ResolverKind.AGENT, "laptop")
-    tracked(db, "a.com")
+    tracked(db, "a.com www.a.com")
     one = reported("a.com", "nxdomain")
     assert accept_results(db, agent, [one] * (MAX_RESULTS + 1), "agent:laptop", NOW) == AcceptRefusal("more than 500 results")
     outcome = accepted(accept_results(db, agent, [reported("missing.example", "nxdomain")] * MAX_RESULTS, "agent:laptop", NOW))
@@ -271,7 +271,7 @@ def test_accept_refuses_a_missing_or_server_resolver(db: sqlite3.Connection) -> 
 
 def test_a_rejection_does_not_open_a_session_or_queue_apply(db: sqlite3.Connection) -> None:
     agent = external(db, ResolverKind.AGENT, "laptop")
-    tracked(db, "a.com")
+    tracked(db, "a.com www.a.com")
     accepted(accept_results(db, agent, [reported("missing.example", "nxdomain")], "agent:laptop", NOW))
     assert runs(db) == []
     assert rows(db, "SELECT count(*) FROM requests") == [(0,)]
@@ -280,7 +280,7 @@ def test_a_rejection_does_not_open_a_session_or_queue_apply(db: sqlite3.Connecti
 def test_the_first_result_opens_a_session_and_an_empty_assignment_closes_it(db: sqlite3.Connection) -> None:
     browser = external(db, ResolverKind.BROWSER, "browser")
     tune(db, "browser.batch", "10")
-    a, www = tracked(db, "a.com")
+    a, www = tracked(db, "a.com www.a.com")
     assert runs(db) == []
     accepted(accept_results(db, browser, [reported("a.com", "nxdomain"), reported("www.a.com", "nodata")], "browser:10.8.0.6", NOW))
     assert runs(db) == [("browser", browser, NOW, None, 2, 0, 0)]
@@ -296,7 +296,7 @@ def test_the_first_result_opens_a_session_and_an_empty_assignment_closes_it(db: 
 
 def test_silence_closes_at_ten_minutes_and_the_next_result_opens_the_next_session(db: sqlite3.Connection) -> None:
     agent = external(db, ResolverKind.AGENT, "laptop")
-    tracked(db, "a.com")
+    tracked(db, "a.com www.a.com")
     accepted(accept_results(db, agent, [reported("a.com", "ok", ("192.0.2.1",)), reported("www.a.com", "nxdomain")], "agent:laptop", T0))
     later = Timestamp(T0 + SILENCE)
     accepted(accept_results(db, agent, [reported("www.a.com", "ok", ("2001:db8::2",))], "agent:laptop", later))
@@ -310,7 +310,7 @@ def _handed_out(db: sqlite3.Connection) -> tuple[ResolverId, Timestamp]:
     browser = external(db, ResolverKind.BROWSER, "browser")
     tune(db, "browser.batch", "10")
     tune(db, "browser.max_age", "1000s")
-    tracked(db, "a.com")
+    tracked(db, "a.com www.a.com")
     accepted(accept_results(db, browser, [reported("www.a.com", "nxdomain")], "browser:10.8.0.6", T0))
     opened = Timestamp(T0 + 5_000)
     accepted(accept_results(db, browser, [reported("a.com", "nxdomain")], "browser:10.8.0.6", opened))
@@ -345,7 +345,7 @@ def test_silence_closes_ten_minutes_after_the_handout(db: sqlite3.Connection) ->
 def test_when_silence_has_already_passed_an_empty_list_keeps_the_silence_time(db: sqlite3.Connection) -> None:
     browser = external(db, ResolverKind.BROWSER, "browser")
     tune(db, "browser.batch", "10")
-    tracked(db, "a.com")
+    tracked(db, "a.com www.a.com")
     accepted(accept_results(db, browser, [reported("a.com", "nxdomain"), reported("www.a.com", "nxdomain")], "browser:10.8.0.6", T0))
     closed = assign_tasks(db, browser, Timestamp(T0 + 1_000))
     assert names_of(closed) == []
@@ -357,7 +357,7 @@ def test_when_silence_has_already_passed_an_empty_list_keeps_the_silence_time(db
 def test_a_browser_doh_pair_is_recorded_through_the_resolve_service(db: sqlite3.Connection) -> None:
     browser = external(db, ResolverKind.BROWSER, "browser")
     tune(db, "browser.batch", "10")
-    a, www = tracked(db, "www.youtube.com")
+    a, www = tracked(db, "www.youtube.com youtube.com")
     assign_tasks(db, browser, NOW)
     payload = [
         element("www.youtube.com", browser, "A", CLOUDFLARE_CNAME_A),
@@ -382,7 +382,7 @@ def test_a_bad_doh_body_is_an_error_with_no_addresses_and_the_name_waits_for_m(d
     browser = external(db, ResolverKind.BROWSER, "browser")
     tune(db, "browser.batch", "10")
     tune(db, "browser.max_age", "1000s")
-    a, www = tracked(db, "a.com")
+    a, www = tracked(db, "a.com www.a.com")
     assign_tasks(db, browser, NOW)
     payload = [element("a.com", browser, "A", body("a.com", A, [doh_record("a.com", A, "nope")])), element("a.com", browser, "AAAA", body("a.com", AAAA, status=3))]
     outcome = accepted(accept_browser_results(db, payload, "browser:10.8.0.6", NOW))
@@ -399,7 +399,7 @@ def test_a_bad_doh_body_is_an_error_with_no_addresses_and_the_name_waits_for_m(d
 def test_a_fetch_error_and_a_non_browser_resolver_are_not_stored_as_unreachable(db: sqlite3.Connection) -> None:
     browser = external(db, ResolverKind.BROWSER, "browser")
     dns = external(db, ResolverKind.DNS, "dns")
-    tracked(db, "a.com")
+    tracked(db, "a.com www.a.com")
     payload = [
         element("a.com", browser, "A", http_status=None, error="Failed to fetch"),
         element("a.com", browser, "AAAA", http_status=404, payload=body("a.com", AAAA)),
@@ -424,7 +424,7 @@ def test_a_fetch_error_and_a_non_browser_resolver_are_not_stored_as_unreachable(
 
 def test_over_500_browser_elements_or_a_non_array_records_nothing(db: sqlite3.Connection) -> None:
     browser = external(db, ResolverKind.BROWSER, "browser")
-    tracked(db, "a.com")
+    tracked(db, "a.com www.a.com")
     good = [element("a.com", browser, "A", body("a.com", A)), element("a.com", browser, "AAAA", body("a.com", AAAA))]
     assert accept_browser_results(db, {"names": []}, "browser:10.8.0.6", NOW) == AcceptRefusal("not a JSON array")
     assert accept_browser_results(db, good * 251, "browser:10.8.0.6", NOW) == AcceptRefusal("more than 500 elements")
@@ -434,7 +434,7 @@ def test_over_500_browser_elements_or_a_non_array_records_nothing(db: sqlite3.Co
 
 def test_two_browser_resolvers_keep_separate_sessions(db: sqlite3.Connection) -> None:
     one, two = external(db, ResolverKind.BROWSER, "one"), external(db, ResolverKind.BROWSER, "two")
-    tracked(db, "a.com")
+    tracked(db, "a.com www.a.com")
     payload = [
         element("a.com", one, "A", body("a.com", A, [doh_record("a.com", A, "192.0.2.20")])),
         element("a.com", one, "AAAA", body("a.com", AAAA)),
@@ -450,7 +450,7 @@ def test_two_browser_resolvers_keep_separate_sessions(db: sqlite3.Connection) ->
 
 def test_browser_pair_status_matches_the_folded_query_results(db: sqlite3.Connection) -> None:
     browser = external(db, ResolverKind.BROWSER, "browser")
-    a, _www = tracked(db, "a.com")
+    a, _www = tracked(db, "a.com www.a.com")
     payload = [element("a.com", browser, "A", body("a.com", A, status=3)), element("a.com", browser, "AAAA", body("a.com", AAAA))]
     accepted(accept_browser_results(db, payload, "browser:10.8.0.6", NOW))
     assert name_resolves(db, [a])[0].status is ResolveStatus.NODATA

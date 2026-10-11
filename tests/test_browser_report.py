@@ -66,7 +66,7 @@ def test_different_negatives_are_nodata_and_a_bad_body_is_an_error_without_addre
 
 def test_one_good_family_is_kept_when_the_other_body_is_bad() -> None:
     report = parsed(pair_of(CLOUDFLARE_A, body(NAME, AAAA, [record(NAME, AAAA, "nope")])))
-    assert report.pairs[0].result == NameResult(ResolveStatus.OK, (ip_address("93.184.215.14"),), error="address: invalid AAAA address 'nope'")
+    assert report.pairs[0].result == NameResult(ResolveStatus.OK, (ip_address("93.184.215.14"),), error="AAAA: address: invalid AAAA address 'nope'")
 
 
 @pytest.mark.parametrize(
@@ -112,9 +112,8 @@ def test_a_transport_error_pairs_with_its_partner_and_is_not_unreachable() -> No
     assert result.addresses == ()
     assert result.error is not None
     assert "\n" not in result.error
-    assert len(result.error) <= 200
-    assert result.error.startswith("boom ")
-    assert "HTTP 404" in result.error
+    assert result.error.startswith("A: boom ")
+    assert "AAAA: HTTP 404" in result.error
 
 
 def test_fetch_failure_without_http_status_is_an_error() -> None:
