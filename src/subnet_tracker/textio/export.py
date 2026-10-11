@@ -6,7 +6,7 @@ from subnet_tracker.textio.lines import DISABLED
 from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute
 from subnet_tracker.textio.parse import FORMAT_VERSION
 from subnet_tracker.textio.tokens import quote, quoted
-from subnet_tracker.types import Timestamp
+from subnet_tracker.types import Timestamp, has_line_break
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,5 +90,5 @@ def _render(model: ExportFile) -> str:
 
 def render_export(model: ExportFile) -> str | LineBreaks:
     # a line break in any field would start a line of its own on import, e.g. a [routes] header
-    broken = sorted(field for field, text in _texts(model) if "".join(text.splitlines()) != text)
+    broken = sorted(field for field, text in _texts(model) if has_line_break(text))
     return LineBreaks(tuple(broken)) if broken else _render(model)

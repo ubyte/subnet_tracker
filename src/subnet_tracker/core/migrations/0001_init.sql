@@ -17,7 +17,7 @@ CREATE TABLE add_batches (                  -- одно добавление: в
   input      TEXT    NOT NULL,              -- исходный текст, обрезанный до 64 КБ
   added      INTEGER NOT NULL,
   duplicates INTEGER NOT NULL,
-  invalid    TEXT    NOT NULL CHECK (json_valid(invalid)),   -- нераспознанные токены
+  invalid    TEXT    NOT NULL CHECK (json_valid(invalid)),   -- ошибки разбора (строка, сообщение)
   undone_at  INTEGER
 ) STRICT;
 

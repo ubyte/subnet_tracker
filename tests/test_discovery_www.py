@@ -2,8 +2,27 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from subnet_tracker.discovery.www import DomainNames, domain_names, pair_name
+from subnet_tracker.discovery.www import Deduplicated, DomainNames, deduplicate, domain_names, pair_name
 from subnet_tracker.types import DomainName
+
+
+def as_names(*items: str) -> list[DomainName]:
+    return [DomainName(n) for n in items]
+
+
+@pytest.mark.parametrize("existing", [{"example.com"}, {"www.example.com"}, {"example.com", "www.example.com"}])
+def test_deduplicate_skips_name_or_pair_already_tracked(existing: set[str]) -> None:
+    result = deduplicate(as_names("www.example.com", "new.com", "example.com"), set(as_names(*existing)))
+    assert result == Deduplicated((domain_names(DomainName("new.com")),), tuple(as_names("www.example.com", "example.com")))
+
+
+def test_deduplicate_keeps_first_of_repeats() -> None:
+    result = deduplicate(as_names("www.a.com", "b.com", "a.com", "www.b.com", "www.a.com"), set())
+    assert result == Deduplicated((domain_names(DomainName("www.a.com")), domain_names(DomainName("b.com"))), tuple(as_names("a.com", "www.b.com", "www.a.com")))
+
+
+def test_deduplicate_nothing() -> None:
+    assert deduplicate([], set()) == Deduplicated()
 
 
 @pytest.mark.parametrize(
