@@ -30,6 +30,7 @@ def names(first: str, pair: str) -> DomainNames:
         ("example.com", "example.com"),
         ("Example.COM", "example.com"),
         ("example.com.", "example.com"),
+        ("example.com。", "example.com"),
         ("example.com:8080", "example.com"),
         ("example.com/path/page.html", "example.com"),
         ("example.com.:443/path?q=1#top", "example.com"),
@@ -104,6 +105,8 @@ def test_name_fits_when_its_pair_fits_253_characters(token: str) -> None:
         "1.2.3.400",
         "exa_mple.com",
         "example..com",
+        "example.com..",
+        "https://example.com../",
         "-example.com",
         "xn--zz.com",
         "a" * 64 + ".com",
@@ -118,6 +121,8 @@ def test_name_fits_when_its_pair_fits_253_characters(token: str) -> None:
         "https://[::1",
         "1.2.3.0/33",
         "2001:db8::/129",
+        "fe80::1%eth0",
+        "[fe80::1%25eth0]",
     ],
 )
 def test_invalid_token_is_reported_with_line_and_token(token: str) -> None:
