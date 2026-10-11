@@ -1,13 +1,18 @@
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum, auto
-from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
+from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
 from typing import NewType
 
 type IPAddress = IPv4Address | IPv6Address
 
 Timestamp = NewType("Timestamp", int)
 Seconds = NewType("Seconds", int)
+Bytes = NewType("Bytes", int)
+
+PREFIX_V4 = range(8, 33)
+PREFIX_V6 = range(16, 129)
 
 GroupId = NewType("GroupId", int)
 BatchId = NewType("BatchId", int)
@@ -124,12 +129,34 @@ class ParseResult[T]:
 
 _DURATION = re.compile(r"([0-9]+)([smhd])")
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+_SIZE = re.compile(r"([0-9]+)(B|KB|MB|GB)")
+_UNIT_BYTES = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3}
+
+
+def _in_largest_unit(amount: int, units: Mapping[str, int]) -> str:
+    exact = [(size, unit) for unit, size in units.items() if amount % size == 0]
+    size, unit = max(exact) if amount else min(exact)
+    return f"{amount // size}{unit}"
 
 
 def parse_duration(text: str) -> Seconds:
     if not (m := _DURATION.fullmatch(text)):
         raise ValueError(f"invalid duration {text!r}, expected <number><s|m|h|d>")
     return Seconds(int(m[1]) * _UNIT_SECONDS[m[2]])
+
+
+def format_duration(seconds: Seconds) -> str:
+    return _in_largest_unit(seconds, _UNIT_SECONDS)
+
+
+def parse_size(text: str) -> Bytes:
+    if not (m := _SIZE.fullmatch(text)):
+        raise ValueError(f"invalid size {text!r}, expected <number><B|KB|MB|GB>")
+    return Bytes(int(m[1]) * _UNIT_BYTES[m[2]])
+
+
+def format_size(size: Bytes) -> str:
+    return _in_largest_unit(size, _UNIT_BYTES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,3 +189,7 @@ def parse_ip_range(text: str) -> IpRange:
         return _ip_range(text)
     except ValueError as e:
         raise ValueError(f"invalid address range {text!r}: {e}") from None
+
+
+def zone_error(net: IPv4Network | IPv6Network) -> str | None:
+    return "zone index is not routable" if isinstance(net, IPv6Network) and net.network_address.scope_id else None
