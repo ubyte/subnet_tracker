@@ -20,8 +20,13 @@ def push_line(route: Route) -> str:
     return f'push "route {n.network_address} {n.netmask}"' if isinstance(n, IPv4Network) else f'push "route-ipv6 {n}"'
 
 
+def read_by_openvpn(line: str) -> bool:
+    stripped = line.lstrip()
+    return bool(stripped) and not stripped.startswith(("#", ";"))
+
+
 def routes_hash(text: str) -> str:
-    return sha256("".join(f"{line}\n" for line in text.splitlines() if line.startswith("push ")).encode()).hexdigest()
+    return sha256("".join(f"{line}\n" for line in text.splitlines() if read_by_openvpn(line)).encode()).hexdigest()
 
 
 def render_routes(plan: RoutePlan, generated_at: Timestamp) -> RenderedFile:
