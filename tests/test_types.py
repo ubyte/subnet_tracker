@@ -13,6 +13,7 @@ from subnet_tracker.types import (
     check_prefix,
     format_duration,
     format_size,
+    one_line_name,
     one_line_text,
     parse_duration,
     parse_ip_range,
@@ -37,6 +38,20 @@ def test_one_line_text_rejects_line_breaks_anywhere(brk: str, template: str) -> 
 @pytest.mark.parametrize(("text", "value"), [("", ""), ("   ", ""), ("  static content\t", "static content"), ("a  b", "a  b"), ("\x1f a", "a"), ("тест", "тест")])
 def test_one_line_text_trims_edges(text: str, value: str) -> None:
     assert one_line_text("comment", text) == value
+
+
+@pytest.mark.parametrize(("text", "value"), [(" Video ", "Video"), ("a", "a"), ("x" * 5, "x" * 5), (" " + "x" * 5 + " ", "x" * 5), ("a  b ", "a  b")])
+def test_one_line_name_trims_and_keeps_names_within_limit(text: str, value: str) -> None:
+    assert one_line_name("name", text, 5) == value
+
+
+@pytest.mark.parametrize("text", ["", "   ", "x" * 6])
+def test_one_line_name_rejects_empty_and_too_long(text: str) -> None:
+    assert one_line_name("name", text, 5) == FieldError("name", "must be 1 to 5 characters long")
+
+
+def test_one_line_name_rejects_line_breaks_first() -> None:
+    assert one_line_name("name", "a\nb" * 5, 5) == FieldError("name", "line breaks are not allowed")
 
 
 @pytest.mark.parametrize(("value", "limits"), [(None, PREFIX_V4), (8, PREFIX_V4), (32, PREFIX_V4), (16, PREFIX_V6), (128, PREFIX_V6)])
