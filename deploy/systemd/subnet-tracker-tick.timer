@@ -1,0 +1,11 @@
+# deploy/systemd/subnet-tracker-tick.timer
+[Unit]
+Description=Run subnet-tracker tick every minute
+
+[Timer]
+OnCalendar=minutely
+AccuracySec=1s
+Unit=subnet-tracker-tick.service
+
+[Install]
+WantedBy=timers.target
