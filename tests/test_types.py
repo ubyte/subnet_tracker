@@ -1,8 +1,18 @@
-from ipaddress import ip_address
+from ipaddress import ip_address, ip_network
 
 import pytest
 
-from subnet_tracker.types import Bytes, ParseError, ParseResult, Seconds, format_duration, format_size, parse_duration, parse_ip_range, parse_size
+from subnet_tracker.types import Bytes, ParseError, ParseResult, Seconds, format_duration, format_size, parse_duration, parse_ip_range, parse_size, zone_error
+
+
+@pytest.mark.parametrize("text", ["10.0.0.0/8", "192.0.2.1", "2001:db8::/32", "fe80::1", "::/0"])
+def test_zone_error_accepts_networks_without_zone(text: str) -> None:
+    assert zone_error(ip_network(text)) is None
+
+
+@pytest.mark.parametrize("text", ["fe80::1%eth0", "fe80::%eth0/64", "fe80::1%1"])
+def test_zone_error_rejects_ipv6_zone(text: str) -> None:
+    assert zone_error(ip_network(text)) == "zone index is not routable"
 
 
 @pytest.mark.parametrize(("text", "seconds"), [("0s", 0), ("3s", 3), ("60m", 3600), ("24h", 86400), ("365d", 365 * 86400)])
