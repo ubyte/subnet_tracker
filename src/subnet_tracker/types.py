@@ -11,6 +11,9 @@ Timestamp = NewType("Timestamp", int)
 Seconds = NewType("Seconds", int)
 Bytes = NewType("Bytes", int)
 
+PREFIX_V4 = range(8, 33)
+PREFIX_V6 = range(16, 129)
+
 GroupId = NewType("GroupId", int)
 BatchId = NewType("BatchId", int)
 DomainId = NewType("DomainId", int)

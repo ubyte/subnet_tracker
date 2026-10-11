@@ -3,11 +3,10 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from ipaddress import ip_network
-
-import idna
+from ipaddress import IPv6Network, ip_network
 
 from subnet_tracker.config import IPNetwork
+from subnet_tracker.discovery.parse import Rejected, normalize_name
 from subnet_tracker.types import format_duration, format_size, parse_duration, parse_size
 
 type Json = bool | int | float | str | list[str]
@@ -89,19 +88,20 @@ def _text(text: str) -> str:
 
 def _network(text: str) -> IPNetwork:
     try:
-        return ip_network(text)
+        net = ip_network(text)
     except ValueError as e:
         raise ValueError(f"invalid network {text!r}: {e}") from None
+    if isinstance(net, IPv6Network) and net.network_address.scope_id:
+        raise ValueError(f"invalid network {text!r}: zone index is not routable")
+    return net
 
 
 def _domain(text: str) -> str:
-    try:
-        name = idna.encode(text, uts46=True).decode("ascii")
-    except idna.IDNAError as e:
-        raise ValueError(f"invalid domain name {text!r}: {e}") from None
-    if name.endswith("."):
-        raise ValueError(f"invalid domain name {text!r}: trailing dot")
-    return name
+    match normalize_name(text):
+        case Rejected(reason):
+            raise ValueError(f"invalid domain name {text!r}: {reason}")
+        case name:
+            return name
 
 
 def _list_codec[T](parse: Callable[[str], T], format: Callable[[T], str]) -> Codec[tuple[T, ...]]:
@@ -149,10 +149,10 @@ def at_least[N: int](minimum: N, format: Callable[[N], str] = str) -> Validate[N
     return validate
 
 
-def between(low: int, high: int) -> Validate[int]:
+def within(limits: range) -> Validate[int]:
     def validate(value: int) -> None:
-        if not low <= value <= high:
-            raise ValueError(f"must be between {low} and {high}")
+        if value not in limits:
+            raise ValueError(f"must be between {limits[0]} and {limits[-1]}")
 
     return validate
 

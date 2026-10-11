@@ -7,8 +7,8 @@ from typing import Any
 
 from subnet_tracker.config import IPNetwork
 from subnet_tracker.core.db import transaction
-from subnet_tracker.core.setting_codecs import DECIMAL, DOMAINS, DURATION, FLAG, INTEGER, NETWORKS, SIZE, TEXT, Codec, Validate, accept, at_least, between, choice_codec, printable_ascii, ratio
-from subnet_tracker.types import Bytes, ReconnectMode, Seconds, Timestamp, format_duration, format_size, parse_duration, parse_size
+from subnet_tracker.core.setting_codecs import DECIMAL, DOMAINS, DURATION, FLAG, INTEGER, NETWORKS, SIZE, TEXT, Codec, Validate, accept, at_least, choice_codec, printable_ascii, ratio, within
+from subnet_tracker.types import PREFIX_V4, PREFIX_V6, Bytes, ReconnectMode, Seconds, Timestamp, format_duration, format_size, parse_duration, parse_size
 
 _SPEC = "setting"
 _CHROME_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
@@ -37,12 +37,12 @@ def _duration(default: str, minimum: int = 0) -> Seconds:
     return _setting(DURATION, parse_duration(default), at_least(Seconds(minimum), format_duration))
 
 
-def _integer(default: int, low: int = 1, high: int | None = None) -> int:
-    return _setting(INTEGER, default, at_least(low) if high is None else between(low, high))
+def _integer(default: int, limits: range | None = None) -> int:
+    return _setting(INTEGER, default, at_least(1) if limits is None else within(limits))
 
 
 def _concurrency(default: int) -> int:
-    return _integer(default, 1, 1024)
+    return _integer(default, range(1, 1025))
 
 
 def _choice[E: StrEnum](default: E, *allowed: E) -> E:
@@ -83,15 +83,15 @@ class AgentSettings:
 @dataclass(frozen=True, slots=True)
 class RoutesSettings:
     retention: Seconds = _duration("4d")
-    default_prefix_v4: int = _integer(23, 1, 32)
-    default_prefix_v6: int = _integer(48, 1, 128)
+    default_prefix_v4: int = _integer(23, PREFIX_V4)
+    default_prefix_v6: int = _integer(48, PREFIX_V6)
     push_ipv4: bool = _setting(FLAG, True)
     push_ipv6: bool = _setting(FLAG, True)
     exclude: tuple[IPNetwork, ...] = _setting(NETWORKS, ())
     max_v4: int = _integer(1000)
     max_v6: int = _integer(300)
-    min_aggregate_prefix_v4: int = _integer(12, 1, 32)
-    min_aggregate_prefix_v6: int = _integer(32, 1, 128)
+    min_aggregate_prefix_v4: int = _integer(12, PREFIX_V4)
+    min_aggregate_prefix_v6: int = _integer(32, PREFIX_V6)
 
 
 @dataclass(frozen=True, slots=True)

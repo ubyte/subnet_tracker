@@ -7,12 +7,10 @@ from ipaddress import IPv6Network, ip_network
 from subnet_tracker.discovery.parse import Network, Rejected, normalize_name
 from subnet_tracker.textio.model import DomainLine, GroupSection, RouteLine
 from subnet_tracker.textio.tokens import QUOTED, Tokens, Word, tokens, unescape
-from subnet_tracker.types import ParseError, ParseResult
+from subnet_tracker.types import PREFIX_V4, PREFIX_V6, ParseError, ParseResult
 
 MAX_GROUP_NAME = 100
 MAX_TAG_NAME = 50
-PREFIX_V4 = range(8, 33)
-PREFIX_V6 = range(16, 129)
 DISABLED = "!disabled"
 _HEADER = re.compile(rf"\[(settings|ungrouped|routes|addresses)\]|\[group\s+{QUOTED}\]")
 _KEY_VALUE = re.compile(r"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*)\s*=(.*)")
