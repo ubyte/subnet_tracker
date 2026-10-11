@@ -218,6 +218,37 @@ f /run/subnet-tracker/trigger 0660 subnet-tracker subnet-tracker -
 
 Пути OpenVPN задаются только в `config.toml`, а не в БД: web UI не должен иметь возможность заставить `tick` писать в произвольный файл.
 
+`deploy/install.sh` создаёт пользователя и группу `subnet-tracker`, каталоги этой таблицы, venv и начальный `config.toml`, копирует уже лежащие в `deploy/systemd/` unit-файлы и `deploy/tmpfiles.d/subnet-tracker.conf` как есть и включает правило nftables и `rp_filter`. Скрипт не переписывает unit-файлы и не ставит пакет дистрибутива.
+
+| Путь | Владелец | Режим |
+|---|---|---|
+| `/etc/subnet-tracker/` | root, группа `subnet-tracker` | 0750 |
+| `/var/lib/subnet-tracker/` | `subnet-tracker`:`subnet-tracker` | 0755 и `g+ws` (2775), чтобы CLI работал у пользователей группы |
+| `/var/lib/subnet-tracker/pki/` | `subnet-tracker`:`subnet-tracker` | 0700 |
+| `/opt/subnet-tracker/` | root | 0755, venv `python3.12 -m venv`, затем `pip install` репозитория: в `bin/` появляется `subnet-tracker` |
+| `/opt/subnet-tracker/agent/` | root | 0755 |
+| `/etc/openvpn/server/subnet-tracker/` | `subnet-tracker`:`subnet-tracker` | 0755, каталог файла маршрутов; сам `routes.conf` пишет `tick` |
+| `/usr/lib/subnet-tracker/` | root | 0755 |
+
+`/run/subnet-tracker/` по-прежнему создаёт tmpfiles: файл копируется в `/etc/tmpfiles.d/subnet-tracker.conf`, затем `systemd-tmpfiles --create`. Пользователь — `useradd --system --gid subnet-tracker --home-dir /var/lib/subnet-tracker --no-create-home`.
+
+`config.toml` записывается один раз, только если его ещё нет: дальше его меняют руками (раздел 13.1). `routes.server_addresses` заполняется глобальными адресами интерфейсов (`ip -o addr show scope global`, адрес без префикса). `web.trusted_networks` начинается с `127.0.0.0/8` и `::1`, и к ним добавляются `routes.tunnel_networks` (`10.8.0.0/24`).
+
+В `/etc/systemd/system/` копируются `subnet-tracker-tick.service`, `subnet-tracker-tick.timer` и `subnet-tracker-tick.path`. Включаются timer и path. Сервис не включается: секции `[Install]` у него нет, его поднимают timer и path.
+
+Правило nftables — `deploy/nftables/subnet-tracker.nft`, на сервере `/etc/subnet-tracker/nftables.conf`. Порт 8080 берётся из `[web] bind` (раздел 13.1). Интерфейс туннеля — `tun0`, имя устройства OpenVPN при `dev tun`. Цепочка не меняет политику остального трафика: отбрасывается только TCP-порт UI не с `lo` и не с `tun0`.
+
+```nft
+table inet subnet-tracker {
+    chain input {
+        type filter hook input priority filter; policy accept;
+        tcp dport 8080 iifname != "lo" iifname != "tun0" drop
+    }
+}
+```
+
+`rp_filter=1` на внешних интерфейсах — файл `/etc/sysctl.d/subnet-tracker.conf`, строка `net.ipv4.conf.<iface>.rp_filter = 1` для каждого интерфейса, кроме `lo` и `tun0`. `net.ipv4.conf.all.rp_filter` не задаётся, иначе строгий режим включился бы и на туннеле.
+
 ## 5. Модель данных
 
 SQLite с `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`. Все таблицы `STRICT`: у каждого столбца объявленный тип, SQLite не принимает значения другого типа. Перечисления, флаги и JSON дополнительно ограничены `CHECK`. Время хранится как `INTEGER` — секунды Unix UTC. Миграции — нумерованные SQL-файлы, версия схемы в `PRAGMA user_version`.
@@ -1597,6 +1628,7 @@ Server key pin: sha256/3q2+7wAbCdEf...
 | `core/settings` | Ключи реестра и их порядок совпадают с таблицей раздела 13.2; значение по умолчанию каждого ключа проходит собственную проверку; недопустимые значения каждого вида отклоняются с понятной ошибкой; текстовая и JSON-форма (наибольшая единица длительности и размера, списки без повторов); неизвестный ключ отклоняется в `parse`, `get`, `set` и `reset`; `set` → `get` для каждого ключа и типизированный `Settings`; значение по умолчанию не хранится, `reset` удаляет строку; строка неизвестного ключа игнорируется, неверное хранимое значение — ошибка с именем ключа. |
 | `core/events`, `requests`, `trigger` | Событие и запрос откатываются вместе с изменением во внешней транзакции; события переживают удаление домена; фильтры по типу, домену, резолверу и автору; неизвестный `kind` читается как текст; чистка по `history.retention` на границе; объединение запросов (домены по `trigger`, сильнейший режим `apply`), удаление только прочитанных строк; trigger-файл дописывается строкой, не пишется внутри транзакции, а ошибка записи возвращается, а не бросается. |
 | `deploy` | Содержимое `deploy/systemd/subnet-tracker-tick.{service,timer,path}` и `deploy/tmpfiles.d/subnet-tracker.conf` без запуска systemd: `Type=oneshot`, `User=` и `Group=subnet-tracker`, `ExecStart` — `/opt/subnet-tracker/bin/subnet-tracker tick`, без `RuntimeDirectory=`; таймер `OnCalendar=minutely`, `AccuracySec=1s`, `WantedBy=timers.target`; path `PathModified=/run/subnet-tracker/trigger` после tmpfiles; каталог `0770` и строка `f /run/subnet-tracker/trigger 0660 subnet-tracker subnet-tracker -`; сокет и `tick.lock` tmpfiles не создаёт. |
+| `install.sh` | Без запуска от root: текст `deploy/install.sh`, пути и режимы раздела 4.2, venv `/opt/subnet-tracker` (`python3.12 -m venv` и `pip install` репозитория), имена unit-файлов из `deploy/systemd/` копируются в `/etc/systemd/system/` без переписывания, timer и path включаются, сервис нет; `server_addresses` из `scope global`, в `trusted_networks` добавляются `tunnel_networks`; сниппет nftables — TCP 8080 принимается только с `lo` и `tun0`; строка sysctl `net.ipv4.conf.<iface>.rp_filter = 1` для остальных интерфейсов, без `all`. |
 | `core/external` | Выбор заданий: новые первыми, `requested_at`, порог m по `attempted_at` (с ошибками), аренда, ровно n самых старых; приём и валидация результатов; сессии. |
 | `openvpn.reconnect` | `reconnect_due_at`: `on_leave` отодвигается присутствием и не смотрит на `min_interval`, `presence_until` 0 — как отсутствие; `auto` ждёт и окна `last_reconnect_at + min_interval`, и конца присутствия, и `pending_since`; без отложенного режима срока нет. `reconnect_mode` сливает режимы через `strongest_reconnect`; `on_leave` только если маршруты добавились; удаление и плановый проход без добавления режим не ставят; явные `now` и `auto` проходят и без добавления; `after_add` режим не выбирает. `reconnect_plan`: `now` сразу перечисляет всех переданных клиентов с паузой `reconnect_spread`, в их порядке; `auto` и `on_leave` клиентов не возвращают, даже если срок прошёл; `unreconnected = 0` снимает отложение без `client-kill` и без сдвига `last_reconnect_at`; `strategy = none` и режим `none` состояние не меняют. Присутствие: `presence_after_activity` продлевает на `idle_delay`, `presence_after_leave` сокращает до `leave_grace`, переход между страницами не ставит клиентов. |
 | `openvpn` | Подставной management-сервер на unix-сокете: разбор `status 3`, `client-kill` с паузой, ожидание срока внутри `tick`, повтор при недоступности. |
@@ -1649,6 +1681,7 @@ agent/
 deploy/
   systemd/    subnet-tracker-web.service, subnet-tracker-agent-api.service, subnet-tracker-tick.{service,timer,path}
   tmpfiles.d/ subnet-tracker.conf
+  nftables/   subnet-tracker.nft
   openvpn/    ovpn-client-connect, server.conf.snippet
   agent/      st-agent.service, st-agent.timer, st-agent-loop.service
   install.sh
