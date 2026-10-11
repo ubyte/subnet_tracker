@@ -55,7 +55,7 @@ class ApplyKind(StrEnum):
 
 class ResolveStep(Protocol):
     def resolve_requested(self, conn: sqlite3.Connection, request: ResolveRequest, claim: Claim | None, now: Timestamp) -> None:
-        """Resolve this request. Ids of deleted domains are already removed. Finish `claim` inside the transaction that stores the results when this step writes them."""
+        """Resolve this request. Ids of deleted domains are already removed. Finish a passed `claim` in the transaction that stores the results; an apply serve passes None."""
 
     def next_portion(self, conn: sqlite3.Connection, now: Timestamp) -> Portion:
         """Take the next scheduled portion, at most RESOLVE_PORTION names. Whether a full pass is due is the step's decision; tick does not read scheduler_state."""
@@ -204,8 +204,9 @@ def _serve(
     _log_invalid(claim)
     work = claim.work if claim is not None else TickWork()
     counted = 0 if claim is None else int(conn.execute("SELECT count(*) FROM requests WHERE id <= ?", (claim.through,)).fetchone()[0])
-    # Resolve and the routes file stay outside the write transaction; only the reconnect decision shares it with finish.
-    resolve.resolve_requested(conn, _request(conn, work), claim, clock())
+    # Resolve and the routes file stay outside the write transaction. Pass the claim only when this serve does not apply, so the step can finish it with the results.
+    # An apply claim is finished in _commit with the reconnect decision, so a failed apply retries.
+    resolve.resolve_requested(conn, _request(conn, work), None if work.apply is not None else claim, clock())
     if claim is not None and work.apply is not None:
         routes_added = apply.apply(conn, ApplyKind.REQUEST, clock())
         mode = _decision(conn, work.apply, routes_added, scheduled=False, carried=carried)
