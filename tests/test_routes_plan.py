@@ -5,7 +5,7 @@ import pytest
 
 from routes_world import DAY, NOW, SYSTEM, World, cidrs
 from subnet_tracker.routes.exclusions import BUILTIN_EXCLUSIONS, exclusions
-from subnet_tracker.routes.model import ExclusionReason, PlanSettings, Prefix, PrefixSource, Route, Snapshot, WarningKind
+from subnet_tracker.routes.model import ExclusionReason, PlanSettings, PlanWarning, Prefix, PrefixSource, Route, Snapshot, WarningKind
 from subnet_tracker.routes.plan import plan_routes
 from subnet_tracker.types import RouteKind, Seconds
 
@@ -149,6 +149,7 @@ def test_builtin_exclusion_drops_network(ip: str) -> None:
     plan = w.plan()
     assert plan.routes == ()
     [warning] = plan.warnings
+    assert isinstance(warning, PlanWarning)
     assert warning.kind == WarningKind.EXCLUDED
     assert warning.exclusion.reason == ExclusionReason.BUILTIN
     assert str(warning.network) in warning.message
@@ -163,6 +164,7 @@ def test_answer_inside_builtin_exclusion_is_no_address(ip: str) -> None:
     assert (plan.stats.networks_v4, plan.stats.networks_v6) == (1, 1)
     assert [a.ip for r in plan.routes for p in r.parts for a in p.addresses] == [ip_address("1.2.3.4"), ip_address("2001:db8:1::5")]
     [warning] = plan.warnings
+    assert isinstance(warning, PlanWarning)
     assert (warning.kind, warning.network, warning.exclusion.reason) == (WarningKind.EXCLUDED, ip_network(ip), ExclusionReason.BUILTIN)
 
 
@@ -181,6 +183,7 @@ def test_server_address_trims_network() -> None:
     assert cidrs(plan) == [str(n) for n in sorted(expected)]
     assert all(ip_address("1.2.3.10") not in r.network for r in plan.routes)
     [warning] = plan.warnings
+    assert isinstance(warning, PlanWarning)
     assert (warning.kind, str(warning.network), str(warning.exclusion.network), warning.exclusion.reason) == (WarningKind.TRIMMED, "1.2.2.0/23", "1.2.3.10/32", ExclusionReason.SERVER_ADDRESS)
     assert "1.2.3.10/32" in warning.message
 
@@ -199,7 +202,9 @@ def test_tunnel_and_setting_exclusions_trim() -> None:
     w.site("b.example", "5.6.7.8")
     plan = w.plan(PlanSettings(tunnel_networks=(ip_network("1.2.2.0/24"),), exclude=(ip_network("5.6.6.0/23"),)))
     assert cidrs(plan) == ["1.2.3.0/24"]
-    assert {(x.kind, x.exclusion.reason) for x in plan.warnings} == {(WarningKind.TRIMMED, ExclusionReason.TUNNEL_NETWORK), (WarningKind.EXCLUDED, ExclusionReason.SETTING)}
+    warnings = [x for x in plan.warnings if isinstance(x, PlanWarning)]
+    assert len(warnings) == len(plan.warnings)
+    assert {(x.kind, x.exclusion.reason) for x in warnings} == {(WarningKind.TRIMMED, ExclusionReason.TUNNEL_NETWORK), (WarningKind.EXCLUDED, ExclusionReason.SETTING)}
 
 
 def test_ipv6_server_address_trims() -> None:
