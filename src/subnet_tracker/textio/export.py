@@ -1,4 +1,5 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from subnet_tracker.textio.lines import DISABLED
@@ -6,6 +7,11 @@ from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile,
 from subnet_tracker.textio.parse import FORMAT_VERSION
 from subnet_tracker.textio.tokens import quote, quoted
 from subnet_tracker.types import Timestamp
+
+
+@dataclass(frozen=True, slots=True)
+class LineBreaks:
+    fields: tuple[str, ...]
 
 
 def _tail(groups: Iterable[str], enabled: bool, comment: str) -> list[str]:
@@ -41,7 +47,27 @@ def _section(header: str, lines: Iterable[str]) -> list[str]:
     return [header, *rest] if (rest := list(lines)) else []
 
 
-def render_export(model: ExportFile) -> str:
+def _texts(model: ExportFile) -> Iterator[tuple[str, str]]:
+    for s in model.settings:
+        yield f"setting {s.key!r}", s.key
+        yield f"setting {s.key!r} value", s.value
+    for g in model.groups:
+        yield f"group {g.name!r}", g.name
+        yield f"group {g.name!r} description", g.description
+    for d in model.domains:
+        yield f"domain {d.name!r}", d.name
+        yield from ((f"domain {d.name!r} group {name!r}", name) for name in d.groups)
+        yield from ((f"domain {d.name!r} tag {tag!r}", tag) for tag in d.tags)
+        yield f"domain {d.name!r} comment", d.comment
+    for r in model.routes:
+        yield from ((f"route {r.network} group {name!r}", name) for name in r.groups)
+        yield f"route {r.network} comment", r.comment
+    for a in model.addresses or ():
+        yield f"address {a.name!r}", a.name
+        yield f"address {a.name!r} {a.ip} resolver {a.resolver!r}", a.resolver
+
+
+def _render(model: ExportFile) -> str:
     sections: dict[str, list[ExportDomain]] = {}
     ungrouped: list[ExportDomain] = []
     for domain in sorted(model.domains, key=lambda d: d.name):
@@ -60,3 +86,9 @@ def render_export(model: ExportFile) -> str:
     if model.addresses is not None:
         blocks.append(["[addresses]", *map(_address, sorted(model.addresses, key=lambda a: (a.name, a.ip.version, int(a.ip), a.resolver)))])
     return "\n\n".join([f"# subnet-tracker export v{FORMAT_VERSION}", *("\n".join(b) for b in blocks if b)]) + "\n"
+
+
+def render_export(model: ExportFile) -> str | LineBreaks:
+    # a line break in any field would start a line of its own on import, e.g. a [routes] header
+    broken = sorted(field for field, text in _texts(model) if "".join(text.splitlines()) != text)
+    return LineBreaks(tuple(broken)) if broken else _render(model)
