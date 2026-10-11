@@ -9,6 +9,7 @@ from subnet_tracker.core.db import transaction
 from subnet_tracker.core.edits import KEEP, Keep, edit_columns, insert_row, taken, update_row
 from subnet_tracker.core.groups import GROUP
 from subnet_tracker.core.memberships import Membership, SetChange, Side, edit_memberships
+from subnet_tracker.routes.exclusions import server_address_error
 from subnet_tracker.types import FieldError, GlobalRouteId, GroupId, IPAddress, Timestamp, network_order, one_line_text, route_network
 
 ROUTE_GROUPS = Membership("route_groups", Side("global_routes", "route_id", GlobalRouteId), GROUP)
@@ -41,21 +42,16 @@ class GlobalRouteEdit:
     enabled: bool | Keep = KEEP
 
 
-# a route to the server through the tunnel breaks the tunnel itself
-def server_address_error(network: IPNetwork, servers: Collection[IPAddress]) -> str | None:
-    covered = next((ip for ip in servers if ip in network), None)
-    return None if covered is None else f"covers the server address {covered}"
-
-
-def global_route_network(text: str, servers: Collection[IPAddress]) -> IPNetwork | FieldError:
+# the stored network is not checked again: the plan drops it if a server address moved into it
+def global_route_network(text: str, servers: Collection[IPAddress], current: IPNetwork | None = None) -> IPNetwork | FieldError:
     network = route_network("cidr", text.strip())
-    if isinstance(network, FieldError):
+    if isinstance(network, FieldError) or network == current:
         return network
     return network if (error := server_address_error(network, servers)) is None else FieldError("cidr", error)
 
 
-def checked_route_edit(edit: GlobalRouteEdit, servers: Collection[IPAddress]) -> GlobalRouteEdit | FieldError:
-    network = edit.cidr if isinstance(edit.cidr, Keep) else global_route_network(edit.cidr, servers)
+def checked_route_edit(edit: GlobalRouteEdit, servers: Collection[IPAddress], current: IPNetwork | None = None) -> GlobalRouteEdit | FieldError:
+    network = edit.cidr if isinstance(edit.cidr, Keep) else global_route_network(edit.cidr, servers, current)
     if isinstance(network, FieldError):
         return network
     comment = edit.comment if isinstance(edit.comment, Keep) else one_line_text("comment", edit.comment)
@@ -104,10 +100,12 @@ def create_global_route(conn: sqlite3.Connection, route: NewGlobalRoute, servers
 
 
 def edit_global_route(conn: sqlite3.Connection, route_id: GlobalRouteId, edit: GlobalRouteEdit, servers: Collection[IPAddress], now: Timestamp) -> GlobalRoute | FieldError | None:
-    checked = checked_route_edit(edit, servers)
-    if isinstance(checked, FieldError):
-        return checked
     with transaction(conn):
+        if (route := get_global_route(conn, route_id)) is None:
+            return None
+        checked = checked_route_edit(edit, servers, route.network)
+        if isinstance(checked, FieldError):
+            return checked
         if error := taken(conn, "global_routes", "cidr", "global route", checked.cidr, route_id):
             return error
         update_row(conn, "global_routes", route_id, _columns(checked), now)

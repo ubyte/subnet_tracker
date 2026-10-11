@@ -124,6 +124,7 @@ class WarningKind(StrEnum):
     EXCLUDED = "excluded"
     TRIMMED = "trimmed"
     OVER_BUDGET = "over_budget"
+    COVERS_SERVER = "covers_server"
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,7 +154,22 @@ class BudgetWarning:
         return f"IPv{self.version} route budget {self.limit} is unreachable, at least {self.routes} routes"
 
 
-type RouteWarning = PlanWarning | BudgetWarning
+@dataclass(frozen=True, slots=True)
+class GlobalRouteWarning:
+    global_route_id: GlobalRouteId
+    network: IPNetwork
+    server: IPAddress  # a server address that came into the route after it was saved
+
+    @property
+    def kind(self) -> WarningKind:
+        return WarningKind.COVERS_SERVER
+
+    @property
+    def message(self) -> str:
+        return f"global route {self.network} dropped, it covers the server address {self.server}"
+
+
+type RouteWarning = PlanWarning | BudgetWarning | GlobalRouteWarning
 
 
 @dataclass(frozen=True, slots=True)

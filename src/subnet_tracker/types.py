@@ -233,10 +233,17 @@ def zone_error(net: IPv4Network | IPv6Network) -> str | None:
     return "zone index is not routable" if isinstance(net, IPv6Network) and net.network_address.scope_id else None
 
 
+_IPV4_MAPPED = IPv6Network("::ffff:0:0/96")
+
+
 # an address becomes /32 or /128 and host bits are zeroed, as in a paste (9.1)
 def route_network(field: str, text: str) -> IPv4Network | IPv6Network | FieldError:
     try:
         net = ip_network(text, strict=False)
     except ValueError:
         return FieldError(field, "not an address or CIDR")
-    return net if (error := zone_error(net)) is None else FieldError(field, error)
+    if (error := zone_error(net)) is not None:
+        return FieldError(field, error)
+    if isinstance(net, IPv6Network) and net.subnet_of(_IPV4_MAPPED):
+        return FieldError(field, "IPv4-mapped addresses are not routable, use the IPv4 form")
+    return net

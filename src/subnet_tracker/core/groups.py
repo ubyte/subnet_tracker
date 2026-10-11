@@ -99,6 +99,8 @@ def edit_group(conn: sqlite3.Connection, group_id: GroupId, edit: GroupEdit, now
     if isinstance(checked, FieldError):
         return checked
     with transaction(conn):
+        if get_group(conn, group_id) is None:
+            return None
         if error := taken(conn, "groups", "name", "group", checked.name, group_id):
             return error
         update_row(conn, "groups", group_id, edit_columns(checked), now)

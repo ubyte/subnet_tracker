@@ -6,6 +6,8 @@ from subnet_tracker.core.edits import KEEP, Keep, edit_columns, insert_row, only
 from subnet_tracker.core.resolver_endpoints import resolver_endpoint
 from subnet_tracker.types import MAX_RESOLVER_NAME, FieldError, ResolverId, ResolverKind, Timestamp, one_line_name
 
+MAX_QPS = 10_000
+
 
 @dataclass(frozen=True, slots=True)
 class Resolver:
@@ -29,6 +31,16 @@ class NewResolver:
     max_qps: int = 50
 
 
+DEFAULT_RESOLVERS = (
+    NewResolver("system", ResolverKind.SYSTEM),
+    NewResolver("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1"),
+    NewResolver("Google", ResolverKind.DNS, "udp://8.8.8.8"),
+    NewResolver("Cloudflare v6", ResolverKind.DNS, "udp://[2606:4700:4700::1111]"),
+    NewResolver("Cloudflare DoH", ResolverKind.DOH, "https://cloudflare-dns.com/dns-query", use_for_routes=False),
+    NewResolver("Browser (Cloudflare)", ResolverKind.BROWSER, "https://cloudflare-dns.com/dns-query"),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class ResolverEdit:
     name: str | Keep = KEEP
@@ -50,8 +62,8 @@ def checked_resolver_edit(edit: ResolverEdit, kind: ResolverKind) -> ResolverEdi
     endpoint = edit.endpoint if isinstance(edit.endpoint, Keep) else resolver_endpoint(kind, edit.endpoint)
     if isinstance(endpoint, FieldError):
         return endpoint
-    if not isinstance(edit.max_qps, Keep) and (isinstance(edit.max_qps, bool) or edit.max_qps < 1):
-        return FieldError("max_qps", "must be a positive integer")
+    if not isinstance(edit.max_qps, Keep) and (isinstance(edit.max_qps, bool) or not 1 <= edit.max_qps <= MAX_QPS):
+        return FieldError("max_qps", f"must be 1 to {MAX_QPS}")
     return replace(edit, name=name, endpoint=endpoint)
 
 
@@ -94,6 +106,14 @@ def create_resolver(conn: sqlite3.Connection, resolver: NewResolver, now: Timest
             return error
         position = conn.execute("SELECT coalesce(max(position) + 1, 0) FROM resolvers").fetchone()[0]
         return _resolver(insert_row(conn, "resolvers", {**edit_columns(checked), "kind": resolver.kind, "position": position}, now))
+
+
+def create_default_resolvers(conn: sqlite3.Connection, now: Timestamp) -> tuple[Resolver, ...]:
+    with transaction(conn):
+        created = [create_resolver(conn, resolver, now) for resolver in DEFAULT_RESOLVERS]
+        if errors := [c for c in created if isinstance(c, FieldError)]:
+            raise ValueError(f"invalid default resolvers: {errors}")
+    return tuple(c for c in created if isinstance(c, Resolver))
 
 
 def edit_resolver(conn: sqlite3.Connection, resolver_id: ResolverId, edit: ResolverEdit, now: Timestamp) -> Resolver | FieldError | None:

@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from subnet_tracker.config import parse_https_url
 from subnet_tracker.types import FieldError, IPAddress, ResolverKind
 
-_DNS = re.compile(r"(udp|tcp|tls)://(?:\[(?P<v6>[^\]]+)\]|(?P<v4>[0-9.]+))(?::(?P<port>[0-9]{1,5}))?")
+_DNS = re.compile(r"(?i:(udp|tcp|tls))://(?:\[(?P<v6>[^\]]+)\]|(?P<v4>[0-9.]+))(?::(?P<port>[0-9]{1,5}))?")
 # the origin of a browser endpoint goes into the CSP header unescaped
 _HOST = re.compile(r"[a-z0-9.:-]+")
 
@@ -38,7 +38,9 @@ def parse_dns_endpoint(text: str) -> DnsEndpoint | FieldError:
         ip: IPAddress = IPv6Address(m["v6"]) if m["v6"] else IPv4Address(m["v4"])
     except ValueError:
         return error
-    return DnsEndpoint(DnsTransport(m[1]), ip, None if m["port"] is None else int(m["port"]))
+    if isinstance(ip, IPv6Address) and (ip.scope_id or ip.ipv4_mapped is not None):
+        return error
+    return DnsEndpoint(DnsTransport(m[1].lower()), ip, None if m["port"] is None else int(m["port"]))
 
 
 def https_endpoint(text: str) -> str | FieldError:
@@ -46,6 +48,8 @@ def https_endpoint(text: str) -> str | FieldError:
         url = urlsplit(parse_https_url(text))
     except ValueError as e:
         return FieldError("endpoint", str(e))
+    if "@" in url.netloc:
+        return FieldError("endpoint", f"invalid endpoint {text!r}, userinfo is not allowed")
     if text.isascii() and text.isprintable() and " " not in text and _HOST.fullmatch(url.hostname or ""):
         return text
     return FieldError("endpoint", f"invalid endpoint {text!r}, expected printable ASCII without spaces and a host of letters, digits, dots and dashes or an IP address")

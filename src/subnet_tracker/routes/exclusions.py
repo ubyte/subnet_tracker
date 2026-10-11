@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from ipaddress import IPv4Network, IPv6Network, ip_network
 
+from subnet_tracker.config import IPNetwork
 from subnet_tracker.routes.model import Exclusion, ExclusionReason, PlanSettings
 from subnet_tracker.types import IPAddress
 
@@ -30,6 +31,15 @@ def exclusions(settings: PlanSettings) -> tuple[Exclusion, ...]:
         *(Exclusion(n, ExclusionReason.TUNNEL_NETWORK) for n in settings.tunnel_networks),
         *(Exclusion(n, ExclusionReason.SETTING) for n in settings.exclude),
     )
+
+
+# a route to the server through the tunnel breaks the tunnel itself
+def covered_server(network: IPNetwork, servers: Iterable[IPAddress]) -> IPAddress | None:
+    return next((ip for ip in servers if ip in network), None)
+
+
+def server_address_error(network: IPNetwork, servers: Iterable[IPAddress]) -> str | None:
+    return None if (ip := covered_server(network, servers)) is None else f"covers the server address {ip}"
 
 
 def builtin_of(ip: IPAddress) -> Exclusion | None:
