@@ -133,8 +133,12 @@ class FieldError:
     message: str
 
 
+def has_line_break(text: str) -> bool:
+    return "".join(text.splitlines()) != text
+
+
 def one_line_text(field: str, text: str) -> str | FieldError:
-    if "".join(text.splitlines()) != text:
+    if has_line_break(text):
         return FieldError(field, "line breaks are not allowed")
     return text.strip()
 
