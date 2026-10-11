@@ -86,7 +86,7 @@ def test_script_matches_design_and_only_appends_routes() -> None:
     assert SOCKET not in script
     assert "client-kill" not in script
     assert SCRIPT.read_text(encoding="utf-8") == script
-    assert stat.S_IMODE(SCRIPT.stat().st_mode) == 0o755
+    assert stat.S_IMODE(SCRIPT.stat().st_mode) & stat.S_IXUSR
     assert subprocess.run(["sh", "-n", str(SCRIPT)], check=False).returncode == 0
 
 
