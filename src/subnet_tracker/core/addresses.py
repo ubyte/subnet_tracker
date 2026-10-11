@@ -17,6 +17,21 @@ _RANGE = (
     " LEFT JOIN name_resolves nr ON nr.name_id = a.name_id AND nr.resolver_id = s.resolver_id"
     " WHERE a.family = ? AND a.ip_bin BETWEEN ? AND ? ORDER BY a.ip_bin, n.name, a.id, s.resolver_id"
 )
+# Same cut as sighting_state: a miss ages from answered_at. The first row of an address is the latest last_seen_at, then the smaller resolver_id.
+_PAST_RETENTION = "nr.answered_at IS NOT NULL AND s.last_seen_at < nr.answered_at AND nr.answered_at - s.last_seen_at >= ?"
+_EXPIRED = (
+    "SELECT a.id AS address_id, a.ip, n.domain_id, n.name, s.resolver_id, r.name AS resolver FROM sightings s"
+    " JOIN addresses a ON a.id = s.address_id JOIN names n ON n.id = a.name_id JOIN resolvers r ON r.id = s.resolver_id"
+    " JOIN name_resolves nr ON nr.name_id = a.name_id AND nr.resolver_id = s.resolver_id"
+    f" WHERE {_PAST_RETENTION} ORDER BY a.id, s.last_seen_at DESC, s.resolver_id"
+)
+_DELETE_SIGHTINGS = (
+    "DELETE FROM sightings WHERE (address_id, resolver_id) IN ("
+    "SELECT s.address_id, s.resolver_id FROM sightings s JOIN addresses a ON a.id = s.address_id"
+    " JOIN name_resolves nr ON nr.name_id = a.name_id AND nr.resolver_id = s.resolver_id"
+    f" WHERE {_PAST_RETENTION})"
+)
+_DELETE_ADDRESSES = "DELETE FROM addresses WHERE id IN (SELECT value FROM json_each(?)) AND NOT EXISTS (SELECT 1 FROM sightings WHERE address_id = addresses.id) RETURNING id"
 
 
 class SightingState(StrEnum):
@@ -87,6 +102,15 @@ class SharedIp:
     names: tuple[DomainName, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class ExpiredAddress:
+    domain_id: DomainId
+    name: DomainName
+    ip: IPAddress
+    resolver_id: ResolverId
+    resolver: str
+
+
 def answer_times(status: ResolveStatus, now: Timestamp) -> tuple[Timestamp | None, Timestamp | None]:
     return (now if status in _ANSWERED else None, now if status is ResolveStatus.OK else None)
 
@@ -153,6 +177,23 @@ def addresses_in(conn: sqlite3.Connection, network: IPv4Network | IPv6Network) -
         if (sighting := _sighting(row)) is not None:
             bucket[1].append(sighting)
     return tuple(_stored(row, tuple(sightings)) for row, sightings in groups.values())
+
+
+def _expired(row: sqlite3.Row) -> ExpiredAddress:
+    return ExpiredAddress(DomainId(row["domain_id"]), DomainName(row["name"]), ip_address(row["ip"]), ResolverId(row["resolver_id"]), row["resolver"])
+
+
+def delete_expired_sightings(conn: sqlite3.Connection, retention: Seconds) -> tuple[ExpiredAddress, ...]:
+    with transaction(conn):
+        rows = list(conn.execute(_EXPIRED, (retention,)))
+        if not rows:
+            return ()
+        conn.execute(_DELETE_SIGHTINGS, (retention,))
+        chosen: dict[int, sqlite3.Row] = {}
+        for row in rows:
+            chosen.setdefault(row["address_id"], row)
+        gone = {row["id"] for row in conn.execute(_DELETE_ADDRESSES, (json.dumps(list(chosen)),))}
+    return tuple(_expired(chosen[address_id]) for address_id in chosen if address_id in gone)
 
 
 def shared_ips(addresses: Sequence[StoredAddress]) -> tuple[SharedIp, ...]:
