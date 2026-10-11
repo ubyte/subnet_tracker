@@ -4,7 +4,22 @@ from ipaddress import IPv4Network, IPv6Network, ip_network
 from subnet_tracker.routes.model import Exclusion, ExclusionReason, PlanSettings
 from subnet_tracker.types import IPAddress
 
-_BUILTIN = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3", "::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8")
+_BUILTIN = (
+    "0.0.0.0/8",
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "224.0.0.0/3",
+    "::/128",
+    "::1/128",
+    "::ffff:0:0/96",
+    "fc00::/7",
+    "fe80::/10",
+    "ff00::/8",
+)
 BUILTIN_EXCLUSIONS = tuple(Exclusion(ip_network(n), ExclusionReason.BUILTIN) for n in _BUILTIN)
 
 
