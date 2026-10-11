@@ -49,7 +49,7 @@ def test_scan_classifies_pages_without_following_links() -> None:
     assert {item.user_agent for item in exchange.sent} == {"ScanTest"}
 
 
-def test_redirect_chain_is_same_site_but_the_group_name_comes_from_the_submitted_url() -> None:
+def test_redirect_chain_names_hosts_but_only_the_submitted_registrable_domain_is_selected() -> None:
     dns = FakeDns({"short.example": ("1.2.3.4",), "example.com": ("8.8.8.8",)})
     exchange = FakeExchange(
         {
@@ -59,10 +59,27 @@ def test_redirect_chain_is_same_site_but_the_group_name_comes_from_the_submitted
     )
     result = scan(["https://short.example/x"], existing=set(), groups=set(), settings=settings(), dns=dns, exchange=exchange)
     assert result.group_name == "short.example"
-    assert [(item.name, item.sources, item.selected) for item in result.candidates] == [
-        ("short.example", ("page host",), True),
-        ("example.com", ("redirect",), True),
-        ("static.example.com", ("script src",), True),
+    assert [(item.name, item.role, item.sources, item.selected) for item in result.candidates] == [
+        ("short.example", ScanRole.SAME, ("page host",), True),
+        ("example.com", ScanRole.THIRD, ("redirect",), False),
+        ("static.example.com", ScanRole.THIRD, ("script src",), False),
+    ]
+
+
+def test_redirect_on_the_submitted_registrable_domain_is_selected() -> None:
+    dns = FakeDns({"www.example.com": ("1.2.3.4",), "static.example.com": ("8.8.8.8",)})
+    exchange = FakeExchange(
+        {
+            "https://www.example.com/x": response(b"", status=302, headers=(("location", "https://static.example.com/land"),)),
+            "https://static.example.com/land": response(b"<script src='https://cdn.example.com/a.js'></script>"),
+        }
+    )
+    result = scan(["https://www.example.com/x"], existing=set(), groups=set(), settings=settings(), dns=dns, exchange=exchange)
+    assert result.group_name == "example.com"
+    assert [(item.name, item.role, item.sources, item.selected) for item in result.candidates] == [
+        ("www.example.com", ScanRole.SAME, ("page host",), True),
+        ("static.example.com", ScanRole.SAME, ("redirect",), True),
+        ("cdn.example.com", ScanRole.SAME, ("script src",), True),
     ]
 
 

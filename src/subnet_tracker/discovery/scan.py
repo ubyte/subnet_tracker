@@ -4,7 +4,7 @@ from time import monotonic
 
 from subnet_tracker.core.settings import DiscoverySettings
 from subnet_tracker.discovery.extract import Candidate, Occurrence, classify, extract, url_host
-from subnet_tracker.discovery.fetch import MAX_URLS, Dns, Exchange, FetchedPage, FetchError, fetch_pages
+from subnet_tracker.discovery.fetch import MAX_URLS, Dns, Exchange, FetchError, fetch_pages
 from subnet_tracker.discovery.scan_group import scan_group, site_key
 from subnet_tracker.types import DomainName
 
@@ -32,16 +32,12 @@ def _hosts(urls: Sequence[str]) -> list[str]:
     return hosts
 
 
-def _sites(pages: Sequence[FetchedPage]) -> frozenset[str]:
+def _sites(urls: Sequence[str]) -> frozenset[str]:
     sites: list[str] = []
-    for page in pages:
-        for url in page.chain:
-            host = url_host(url)
-            if host is None:
-                continue
-            site = site_key(host)
-            if site is not None and site not in sites:
-                sites.append(site)
+    for host in _hosts(urls):
+        site = site_key(host)
+        if site is not None and site not in sites:
+            sites.append(site)
     return frozenset(sites)
 
 
@@ -59,14 +55,12 @@ def scan(
     if len(urls) > MAX_URLS:
         return ScanResult((), (), (ScanError("", f"at most {MAX_URLS} URLs"),), group_name)
     fetched = fetch_pages(urls, dns=dns, exchange=exchange, timeout=settings.timeout, max_bytes=settings.max_bytes, user_agent=settings.user_agent, clock=clock)
-    pages: list[FetchedPage] = []
     errors: list[ScanError] = []
     found: list[Occurrence] = []
     for item in fetched:
         if isinstance(item, FetchError):
             errors.append(ScanError(item.url, item.message))
             continue
-        pages.append(item)
         found.extend(extract(item.chain, item.headers, item.body))
-    candidates, ignored = classify(tuple(found), _sites(pages), existing, settings.ignore)
+    candidates, ignored = classify(tuple(found), _sites(urls), existing, settings.ignore)
     return ScanResult(candidates, ignored, tuple(errors), group_name)
