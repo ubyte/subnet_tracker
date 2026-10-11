@@ -1,0 +1,5 @@
+# фрагмент server.conf, который ставит install.sh
+management /run/subnet-tracker/ovpn-server.sock unix
+management-client-group subnet-tracker
+script-security 2
+client-connect /usr/lib/subnet-tracker/ovpn-client-connect
