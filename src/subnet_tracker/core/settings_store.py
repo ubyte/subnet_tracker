@@ -23,9 +23,13 @@ def list_settings(conn: sqlite3.Connection) -> tuple[SettingState, ...]:
     return setting_states(_all_stored(conn))
 
 
-def get_setting(conn: sqlite3.Connection, key: str) -> SettingState | SettingError:
+def stored_setting(conn: sqlite3.Connection, key: str) -> StoredSetting | None:
     row = conn.execute("SELECT value, updated_at FROM settings WHERE key = ?", (key,)).fetchone()
-    return setting_state(key, None if row is None else _stored(row))
+    return None if row is None else _stored(row)
+
+
+def get_setting(conn: sqlite3.Connection, key: str) -> SettingState | SettingError:
+    return setting_state(key, stored_setting(conn, key))
 
 
 def save_setting(conn: sqlite3.Connection, value: SettingValue, now: Timestamp) -> None:

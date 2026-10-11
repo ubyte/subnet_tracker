@@ -1,11 +1,12 @@
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
 from typing import NewType
 
 type IPAddress = IPv4Address | IPv6Address
+type JsonValue = str | int | float | bool | Sequence[JsonValue] | Mapping[str, JsonValue] | None
 
 Timestamp = NewType("Timestamp", int)
 Seconds = NewType("Seconds", int)

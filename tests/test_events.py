@@ -7,8 +7,8 @@ from db_rows import insert
 from domains_world import ACTOR, NOW, count, paste, paste_and_fail
 from subnet_tracker.core.db import transaction
 from subnet_tracker.core.domains import delete_domains, find_domain
-from subnet_tracker.core.events import Event, EventFilter, EventKind, JsonValue, NewEvent, history_cutoff, list_events, prune_events, record_events
-from subnet_tracker.types import DomainId, DomainName, EventId, ResolverId, Seconds, Timestamp
+from subnet_tracker.core.events import Event, EventFilter, EventKind, NewEvent, history_cutoff, list_events, prune_events, record_events
+from subnet_tracker.types import DomainId, DomainName, EventId, JsonValue, ResolverId, Seconds, Timestamp
 
 CLOUDFLARE: dict[str, JsonValue] = {"resolver_id": 2, "resolver": "Cloudflare"}
 
