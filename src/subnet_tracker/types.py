@@ -13,6 +13,8 @@ Bytes = NewType("Bytes", int)
 
 PREFIX_V4 = range(8, 33)
 PREFIX_V6 = range(16, 129)
+MAX_GROUP_NAME = 100
+MAX_TAG_NAME = 50
 
 GroupId = NewType("GroupId", int)
 BatchId = NewType("BatchId", int)
@@ -141,6 +143,13 @@ def one_line_text(field: str, text: str) -> str | FieldError:
     if has_line_break(text):
         return FieldError(field, "line breaks are not allowed")
     return text.strip()
+
+
+def one_line_name(field: str, text: str, limit: int) -> str | FieldError:
+    name = one_line_text(field, text)
+    if isinstance(name, str) and not 1 <= len(name) <= limit:
+        return FieldError(field, f"must be 1 to {limit} characters long")
+    return name
 
 
 def check_prefix(field: str, prefix: int | None, limits: range) -> FieldError | None:

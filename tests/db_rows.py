@@ -1,5 +1,6 @@
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 
 type Row = Mapping[str, object]
 
@@ -75,6 +76,17 @@ def insert(conn: sqlite3.Connection, table: str, row: Row) -> int:
 def seed(conn: sqlite3.Connection) -> None:
     for table, row in PARENTS:
         insert(conn, table, row)
+
+
+@contextmanager
+def write_locked(db: sqlite3.Connection, other: sqlite3.Connection) -> Iterator[None]:
+    # other holds the write lock; db fails at once instead of waiting for it
+    other.execute("BEGIN IMMEDIATE")
+    db.execute("PRAGMA busy_timeout = 0")
+    try:
+        yield
+    finally:
+        other.execute("ROLLBACK")
 
 
 def tables(conn: sqlite3.Connection) -> set[str]:

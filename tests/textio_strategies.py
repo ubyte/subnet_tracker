@@ -5,9 +5,8 @@ from hypothesis import strategies as st
 from settings_samples import SAMPLES
 from subnet_tracker.discovery.parse import Network
 from subnet_tracker.discovery.www import domain_names, pair_name
-from subnet_tracker.textio.lines import MAX_GROUP_NAME, MAX_TAG_NAME
 from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute, ExportSetting
-from subnet_tracker.types import PREFIX_V4, PREFIX_V6, DomainName, Timestamp
+from subnet_tracker.types import MAX_GROUP_NAME, MAX_TAG_NAME, PREFIX_V4, PREFIX_V6, DomainName, Timestamp
 
 # everything str.splitlines() breaks on: names, descriptions and comments never contain these (design section 12)
 LINE_BREAKS = "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from db_rows import tables
-from subnet_tracker.core.db import Migration, MigrationError, apply_migrations, connect, load_migrations, migrate, parse_migrations, transaction
+from db_rows import tables, write_locked
+from subnet_tracker.core.db import Migration, MigrationError, apply_migrations, connect, load_migrations, migrate, parse_migrations, snapshot, transaction
 
 EXTRA = Migration(2, "extra", "CREATE TABLE extra (id INTEGER PRIMARY KEY) STRICT;")
 
@@ -104,4 +104,99 @@ def test_transaction_rolls_back_on_error(db: sqlite3.Connection) -> None:
     with pytest.raises(RuntimeError):
         insert_tag_and_fail(db)
     assert db.execute("SELECT count(*) FROM tags").fetchone()[0] == 0
+    assert not db.in_transaction
+
+
+def tag_names(db: sqlite3.Connection) -> list[str]:
+    return [row["name"] for row in db.execute("SELECT name FROM tags ORDER BY name")]
+
+
+def test_nested_transaction_joins_the_outer_one(db: sqlite3.Connection) -> None:
+    with transaction(db):
+        db.execute("INSERT INTO tags (name) VALUES ('outer')")
+        with transaction(db):
+            db.execute("INSERT INTO tags (name) VALUES ('inner')")
+        assert db.in_transaction
+    assert tag_names(db) == ["inner", "outer"]
+    assert not db.in_transaction
+
+
+def test_failed_nested_transaction_rolls_back_only_its_own_writes(db: sqlite3.Connection) -> None:
+    with transaction(db):
+        db.execute("INSERT INTO tags (name) VALUES ('outer')")
+        with pytest.raises(RuntimeError):
+            insert_tag_and_fail(db)
+        assert db.in_transaction
+        with transaction(db):
+            db.execute("INSERT INTO tags (name) VALUES ('after')")
+    assert tag_names(db) == ["after", "outer"]
+
+
+def nest_tag_and_fail(db: sqlite3.Connection) -> None:
+    with transaction(db):
+        with transaction(db):
+            db.execute("INSERT INTO tags (name) VALUES ('inner')")
+        raise RuntimeError
+
+
+def test_outer_rollback_discards_committed_nested_writes(db: sqlite3.Connection) -> None:
+    with pytest.raises(RuntimeError):
+        nest_tag_and_fail(db)
+    assert tag_names(db) == []
+    assert not db.in_transaction
+
+
+def insert_orphan_checked_at_commit(db: sqlite3.Connection) -> None:
+    with transaction(db):
+        db.execute("PRAGMA defer_foreign_keys = ON")
+        db.execute("INSERT INTO domain_tags (domain_id, tag_id) VALUES (99, 99)")
+
+
+def test_failed_commit_rolls_back(db: sqlite3.Connection) -> None:
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        insert_orphan_checked_at_commit(db)
+    assert not db.in_transaction
+    assert db.execute("SELECT count(*) FROM domain_tags").fetchone()[0] == 0
+
+
+def test_transaction_takes_the_write_lock(db: sqlite3.Connection, other: sqlite3.Connection) -> None:
+    with write_locked(db, other), pytest.raises(sqlite3.OperationalError, match="locked"), transaction(db):
+        pass
+
+
+def test_snapshot_does_not_take_the_write_lock(db: sqlite3.Connection, other: sqlite3.Connection) -> None:
+    with snapshot(db):
+        assert tag_names(db) == []
+        assert db.in_transaction
+        other.execute("BEGIN IMMEDIATE")
+        other.execute("INSERT INTO tags (name) VALUES ('later')")
+        other.execute("COMMIT")
+        assert tag_names(db) == []
+    assert not db.in_transaction
+    assert tag_names(db) == ["later"]
+
+
+def test_snapshot_reads_while_another_connection_writes(db: sqlite3.Connection, other: sqlite3.Connection) -> None:
+    with write_locked(db, other), snapshot(db):
+        assert tag_names(db) == []
+
+
+def test_snapshot_inside_a_transaction_joins_it(db: sqlite3.Connection) -> None:
+    with transaction(db):
+        db.execute("INSERT INTO tags (name) VALUES ('pending')")
+        with snapshot(db):
+            assert tag_names(db) == ["pending"]
+        assert db.in_transaction
+    assert tag_names(db) == ["pending"]
+
+
+def read_and_fail(db: sqlite3.Connection) -> None:
+    with snapshot(db):
+        tag_names(db)
+        raise RuntimeError
+
+
+def test_failed_snapshot_ends_its_transaction(db: sqlite3.Connection) -> None:
+    with pytest.raises(RuntimeError):
+        read_and_fail(db)
     assert not db.in_transaction
