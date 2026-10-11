@@ -51,6 +51,15 @@ def normalize_name(host: str) -> DomainName | Rejected:
     return name
 
 
+def unicode_name(name: DomainName) -> str:
+    if not any(label.startswith("xn--") for label in name.split(".")):
+        return name
+    try:
+        return idna.decode(name)
+    except idna.IDNAError:
+        return name
+
+
 def _network(text: str) -> Network | None:
     try:
         return ip_network(text, strict=False)

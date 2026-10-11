@@ -7,6 +7,8 @@ from subnet_tracker.core.edits import KEEP, Keep, edit_columns, insert_row, only
 from subnet_tracker.core.memberships import DOMAIN, Membership, SetChange, Side, edit_memberships
 from subnet_tracker.types import MAX_GROUP_NAME, DomainId, FieldError, GroupId, Timestamp, one_line_name, one_line_text
 
+# the filter keyword for domains without a group, so no group may take it as a name
+NO_GROUP = "none"
 GROUP = Side("groups", "group_id", GroupId)
 GROUPS = Membership("domain_groups", DOMAIN, GROUP)
 _COUNTS = "(SELECT count(*) FROM domain_groups WHERE group_id = g.id) AS domains, (SELECT count(*) FROM route_groups WHERE group_id = g.id) AS routes"
@@ -64,6 +66,8 @@ def checked_group_edit(edit: GroupEdit) -> GroupEdit | FieldError:
     name = edit.name if isinstance(edit.name, Keep) else one_line_name("name", edit.name, MAX_GROUP_NAME)
     if isinstance(name, FieldError):
         return name
+    if isinstance(name, str) and name.casefold() == NO_GROUP:
+        return FieldError("name", f"{name!r} is reserved for domains without a group")
     description = edit.description if isinstance(edit.description, Keep) else one_line_text("description", edit.description)
     if isinstance(description, FieldError):
         return description

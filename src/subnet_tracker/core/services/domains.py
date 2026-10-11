@@ -94,7 +94,7 @@ def _group_ids(conn: sqlite3.Connection, names: Iterable[str]) -> frozenset[Grou
     ids: set[GroupId] = set()
     for name in names:
         if (group := find_group(conn, name)) is None:
-            return FieldError("group", f"group {name!r} does not exist")
+            return FieldError("group", f"{name!r} does not exist")
         ids.add(group.id)
     return frozenset(ids)
 

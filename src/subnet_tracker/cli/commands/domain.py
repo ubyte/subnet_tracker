@@ -13,12 +13,12 @@ from subnet_tracker.core.domain_query import DomainQuery, DomainSort, DomainStat
 from subnet_tracker.core.domain_view import domain_views
 from subnet_tracker.core.domains import Domain, DomainEdit, find_domain
 from subnet_tracker.core.edits import KEEP
+from subnet_tracker.core.groups import NO_GROUP
 from subnet_tracker.core.services.domains import AddOptions, DomainChange, DomainChanged, add_domain_names, change_domains, remove_domains
 from subnet_tracker.core.settings_store import load_settings
 from subnet_tracker.discovery.parse import Rejected, normalize_name, parse_names
 from subnet_tracker.types import BatchKind, DomainId, FieldError, ReconnectMode
 
-NO_GROUP = "none"
 INHERIT = "inherit"
 
 

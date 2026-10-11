@@ -10,6 +10,7 @@ from subnet_tracker.core.groups import find_group
 from subnet_tracker.core.name_status import NameStatus
 from subnet_tracker.core.settings_store import load_settings
 from subnet_tracker.core.tags import find_tag
+from subnet_tracker.discovery.parse import unicode_name
 from subnet_tracker.types import BatchId, FieldError, Seconds, Timestamp
 
 
@@ -52,7 +53,8 @@ def in_state(view: DomainView, state: DomainState, retention: Seconds) -> bool:
 
 def _found(view: DomainView, text: str) -> bool:
     needle = text.casefold()
-    return any(needle in s.casefold() for s in (*(n.name.name for n in view.names), *view.groups, *view.tags))
+    names = [n.name.name for n in view.names]
+    return any(needle in s.casefold() for s in (*names, *map(unicode_name, names), *view.groups, *view.tags))
 
 
 def matches(view: DomainView, q: DomainQuery, retention: Seconds) -> bool:
@@ -86,11 +88,11 @@ def select_domains(views: Sequence[DomainView], query: DomainQuery, retention: S
 
 def query_error(conn: sqlite3.Connection, query: DomainQuery) -> FieldError | None:
     if query.group is not None and find_group(conn, query.group) is None:
-        return FieldError("group", f"group {query.group!r} does not exist")
+        return FieldError("group", f"{query.group!r} does not exist")
     if query.tag is not None and find_tag(conn, query.tag) is None:
-        return FieldError("tag", f"tag {query.tag!r} does not exist")
+        return FieldError("tag", f"{query.tag!r} does not exist")
     if query.batch_id is not None and not batch_exists(conn, query.batch_id):
-        return FieldError("batch", f"batch {query.batch_id} does not exist")
+        return FieldError("batch", f"{query.batch_id} does not exist")
     return None
 
 
