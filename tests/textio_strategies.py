@@ -51,7 +51,9 @@ _networks = (_network(st.ip_addresses(v=4).map(str), 32) | _network(st.ip_addres
 _settings = st.lists(st.builds(ExportSetting, st.from_regex(r"[a-z][a-z0-9_]{0,8}(\.[a-z0-9_]{1,8}){0,2}", fullmatch=True), trimmed_text()), max_size=3, unique_by=lambda s: s.key).map(tuple)
 _group_name = one_line_strings(1, MAX_GROUP_NAME)
 _tags = st.frozensets(one_line_strings(1, MAX_TAG_NAME), max_size=3)
-_addresses = st.none() | st.lists(st.builds(ExportAddress, _domain_name, st.ip_addresses(), one_line_strings(1, 100), _timestamps, _timestamps), max_size=3).map(tuple)
+_address = st.builds(ExportAddress, _domain_name, st.ip_addresses(), one_line_strings(1, 100), _timestamps, _timestamps)
+# a sighting is unique per name, IP and resolver: UNIQUE (name_id, ip) in addresses, PRIMARY KEY (address_id, resolver_id) in sightings
+_addresses = st.none() | st.lists(_address, max_size=3, unique_by=lambda a: (a.name, a.ip, a.resolver)).map(tuple)
 # stored settings: registry text form, never the default; two values for some keys so that states disagree
 _STORED_VALUES = [*((key, canonical) for key, (_, canonical) in SAMPLES.items()), ("resolve.interval", "2h"), ("routes.max_v4", "700"), ("browser.refresh_mode", "off")]
 _stored_settings = st.lists(st.sampled_from(_STORED_VALUES), max_size=4, unique_by=lambda kv: kv[0]).map(lambda kvs: tuple(ExportSetting(k, v) for k, v in kvs))
