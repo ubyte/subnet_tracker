@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from cli_world import Cli, Result
-from subnet_tracker.cli.command import Runtime
+from subnet_tracker.cli.command import Runtime, unix_user
 from subnet_tracker.cli.main import main
 from subnet_tracker.config import CONFIG_FILE
 from subnet_tracker.core.db import connect, load_migrations
@@ -40,6 +40,31 @@ def test_help_lists_the_commands(cli: Cli) -> None:
 def test_defaults_are_the_installed_paths_and_the_unix_user() -> None:
     runtime = Runtime()
     assert (CONFIG_FILE, runtime.trigger_file, runtime.user()) == (Path("/etc/subnet-tracker/config.toml"), TRIGGER_FILE, pwd.getpwuid(os.getuid()).pw_name)
+
+
+ROOT = pwd.getpwuid(0).pw_name
+SOMEONE = next(p for p in pwd.getpwall() if p.pw_uid != 0)
+
+
+@pytest.mark.parametrize(
+    ("uid", "environ", "user"),
+    [
+        (0, {"SUDO_USER": "alice"}, "alice"),
+        (0, {}, ROOT),
+        (0, {"SUDO_USER": ""}, ROOT),
+        (SOMEONE.pw_uid, {"SUDO_USER": "alice"}, SOMEONE.pw_name),
+    ],
+)
+def test_sudo_caller_is_the_user_only_for_root(uid: int, environ: dict[str, str], user: str) -> None:
+    assert unix_user(uid, environ) == user
+
+
+def test_uid_without_passwd_entry_is_the_number(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing(uid: int) -> pwd.struct_passwd:
+        raise KeyError(uid)
+
+    monkeypatch.setattr(pwd, "getpwuid", missing)
+    assert unix_user(4242, {}) == "4242"
 
 
 def test_missing_config_is_an_error(cli: Cli, tmp_path: Path) -> None:
