@@ -1,0 +1,129 @@
+import re
+from collections.abc import Container, Iterator
+from dataclasses import dataclass
+from ipaddress import IPv4Network, IPv6Network, ip_network
+from urllib.parse import urlsplit
+
+import idna
+
+from subnet_tracker.discovery.www import DomainNames, deduplicate, pair_name
+from subnet_tracker.types import DomainName, ParseError, ParseResult, zone_error
+
+type Network = IPv4Network | IPv6Network
+
+MAX_NAME_LENGTH = 253
+WILDCARD = "*."
+_SEPARATORS = re.compile(r"[\s,]+")
+_SCHEME = re.compile(r"[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+
+
+@dataclass(frozen=True, slots=True)
+class Rejected:
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class PastePlan:
+    new_domains: tuple[DomainNames, ...] = ()
+    duplicates: tuple[DomainName, ...] = ()
+    networks: tuple[Network, ...] = ()
+    wildcards: tuple[DomainName, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _Host:
+    name: DomainName
+    wildcard: bool
+
+
+def normalize_name(host: str) -> DomainName | Rejected:
+    try:
+        name = DomainName(idna.encode(host, uts46=True).decode("ascii").removesuffix("."))
+    except idna.IDNAError as e:
+        return Rejected(str(e))
+    labels = name.split(".")
+    if len(labels) < 2:
+        return Rejected("a single label is not a domain name")
+    if labels[-1].isdigit():
+        return Rejected("numeric top-level label")
+    if len(pair_name(name)) > MAX_NAME_LENGTH:
+        return Rejected(f"its www pair would be longer than {MAX_NAME_LENGTH} characters")
+    return name
+
+
+def unicode_name(name: DomainName) -> str:
+    if not any(label.startswith("xn--") for label in name.split(".")):
+        return name
+    try:
+        return idna.decode(name)
+    except idna.IDNAError:
+        return name
+
+
+def _network(text: str) -> Network | None:
+    try:
+        return ip_network(text, strict=False)
+    except ValueError:
+        return None
+
+
+def _routable(net: Network) -> Network | Rejected:
+    return net if (error := zone_error(net)) is None else Rejected(error)
+
+
+def _hostname(token: str) -> str | None:
+    try:
+        return urlsplit(token if _SCHEME.match(token) else "//" + token.removeprefix("//")).hostname
+    except ValueError:
+        return None
+
+
+def _classify(token: str) -> _Host | Network | Rejected:
+    if (net := _network(token)) is not None:
+        return _routable(net)
+    address, _, prefix = token.partition("/")
+    if prefix.isdigit() and _network(address) is not None:
+        return Rejected("invalid prefix length")
+    if not (host := _hostname(token)):
+        return Rejected("no host")
+    if (net := _network(host)) is not None:
+        return _routable(net)
+    name = normalize_name(host.removeprefix(WILDCARD))
+    return name if isinstance(name, Rejected) else _Host(name, host.startswith(WILDCARD))
+
+
+def _tokens(text: str) -> Iterator[tuple[int, str]]:
+    for line, content in enumerate(text.splitlines(), 1):
+        yield from ((line, token) for token in _SEPARATORS.split(content) if token)
+
+
+# names only, as domain lists: URLs, addresses and wildcards are errors
+def parse_names(text: str) -> ParseResult[tuple[DomainName, ...]]:
+    names: list[DomainName] = []
+    errors: list[ParseError] = []
+    for line, token in _tokens(text):
+        match Rejected("wildcards are not supported") if token.startswith(WILDCARD) else normalize_name(token):
+            case Rejected(reason):
+                errors.append(ParseError(line, f"{token!r}: {reason}"))
+            case name:
+                names.append(name)
+    return ParseResult(tuple(names), tuple(errors))
+
+
+def parse_paste(text: str, existing: Container[DomainName]) -> ParseResult[PastePlan]:
+    names: list[DomainName] = []
+    networks: dict[Network, None] = {}
+    wildcards: dict[DomainName, None] = {}
+    errors: list[ParseError] = []
+    for line, token in _tokens(text):
+        match _classify(token):
+            case Rejected(reason):
+                errors.append(ParseError(line, f"{token!r}: {reason}"))
+            case _Host(name, wildcard):
+                if wildcard:
+                    wildcards[name] = None
+                names.append(name)
+            case net:
+                networks[net] = None
+    found = deduplicate(names, existing)
+    return ParseResult(PastePlan(found.new_domains, found.duplicates, tuple(networks), tuple(wildcards)), tuple(errors))

@@ -1,0 +1,86 @@
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
+from subnet_tracker.discovery.www import Deduplicated, DomainNames, deduplicate, domain_names, pair_name
+from subnet_tracker.types import DomainName
+
+
+def as_names(*items: str) -> list[DomainName]:
+    return [DomainName(n) for n in items]
+
+
+@pytest.mark.parametrize("existing", [{"example.com"}, {"www.example.com"}, {"example.com", "www.example.com"}])
+def test_deduplicate_skips_name_or_pair_already_tracked(existing: set[str]) -> None:
+    result = deduplicate(as_names("www.example.com", "new.com", "example.com"), set(as_names(*existing)))
+    assert result == Deduplicated((domain_names(DomainName("new.com")),), tuple(as_names("www.example.com", "example.com")))
+
+
+def test_deduplicate_keeps_first_of_repeats() -> None:
+    result = deduplicate(as_names("www.a.com", "b.com", "a.com", "www.b.com", "www.a.com"), set())
+    assert result == Deduplicated((domain_names(DomainName("www.a.com")), domain_names(DomainName("b.com"))), tuple(as_names("a.com", "www.b.com", "www.a.com")))
+
+
+def test_deduplicate_nothing() -> None:
+    assert deduplicate([], set()) == Deduplicated()
+
+
+@pytest.mark.parametrize(
+    ("name", "pair"),
+    [
+        ("example.com", "www.example.com"),
+        ("www.example.com", "example.com"),
+        ("api.example.com", "www.api.example.com"),
+        ("www.api.example.com", "api.example.com"),
+        ("www.www.example.com", "www.example.com"),
+        ("xn--e1afmkfd.xn--p1ai", "www.xn--e1afmkfd.xn--p1ai"),
+        ("www.xn--e1afmkfd.xn--p1ai", "xn--e1afmkfd.xn--p1ai"),
+    ],
+)
+def test_pair_name(name: DomainName, pair: str) -> None:
+    assert pair_name(name) == pair
+
+
+@pytest.mark.parametrize(
+    ("name", "pair"),
+    [("com", "www.com"), ("www.com", "com"), ("www.co.uk", "co.uk"), ("github.io", "www.github.io"), ("localhost", "www.localhost"), ("www.local", "local"), ("wwwexample.com", "www.wwwexample.com")],
+)
+def test_pair_is_plain_text_without_suffix_checks(name: DomainName, pair: str) -> None:
+    assert pair_name(name) == pair
+
+
+def test_pair_length_is_left_to_parsing() -> None:
+    name = DomainName(".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 54, "com"]))
+    assert len(pair_name(name)) == 254
+
+
+@pytest.mark.parametrize(
+    ("canonical", "names"),
+    [
+        ("example.com", DomainNames(DomainName("example.com"), DomainName("www.example.com"))),
+        ("www.example.com", DomainNames(DomainName("www.example.com"), DomainName("example.com"))),
+        ("www.co.uk", DomainNames(DomainName("www.co.uk"), DomainName("co.uk"))),
+    ],
+)
+def test_domain_names_keep_entered_name_canonical(canonical: DomainName, names: DomainNames) -> None:
+    assert domain_names(canonical) == names
+
+
+def test_domain_names_lists_canonical_first() -> None:
+    assert domain_names(DomainName("www.example.com")).all == ("www.example.com", "example.com")
+
+
+_label = st.from_regex(r"[a-z0-9]([a-z0-9-]{0,10}[a-z0-9])?", fullmatch=True)
+_names = st.builds(lambda www, labels: "www." * www + ".".join(labels), st.integers(0, 2), st.lists(_label, min_size=1, max_size=4))
+
+
+@given(_names)
+def test_pair_differs_by_one_leading_www(name: DomainName) -> None:
+    pair = pair_name(name)
+    assert pair == "www." + name or name == "www." + pair
+
+
+@given(_names)
+def test_pair_of_pair_is_the_name_unless_double_www(name: DomainName) -> None:
+    if not name.startswith("www.www."):
+        assert pair_name(pair_name(name)) == name
