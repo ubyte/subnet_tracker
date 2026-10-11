@@ -1418,7 +1418,7 @@ src/subnet_tracker/
   __main__.py
   config.py
   types.py    NewType, StrEnum, общие dataclass
-  core/       db.py, migrations/*.sql, domains.py, names.py, batches.py, groups.py, tags.py, resolvers.py, agents.py, external.py, global_routes.py, settings.py, events.py, addresses.py, plan_store.py, web_devices.py
+  core/       db.py, migrations/*.sql, domains.py, names.py, batches.py, groups.py, tags.py, resolvers.py, agents.py, external.py, global_routes.py, settings.py, setting_codecs.py, settings_store.py, events.py, addresses.py, plan_store.py, web_devices.py
   resolver/   run.py, backends.py, classify.py, doh_json.py, expire.py
   routes/     plan.py, budget.py, render.py
   openvpn/    mgmt.py, apply.py, reconnect.py
