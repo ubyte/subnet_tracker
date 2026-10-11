@@ -22,6 +22,9 @@ WebDeviceId = NewType("WebDeviceId", int)
 RequestId = NewType("RequestId", int)
 ResolveRunId = NewType("ResolveRunId", int)
 
+# lowercase punycode, without the trailing dot
+DomainName = NewType("DomainName", str)
+
 
 @dataclass(frozen=True, slots=True)
 class ParseError:
