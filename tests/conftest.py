@@ -3,13 +3,16 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from hypothesis import settings
 
-from cli_world import Cli, make_cli
 from db_rows import seed
 from subnet_tracker.core.db import connect, migrate
+
+if TYPE_CHECKING:
+    from cli_world import Cli
 
 settings.register_profile("default", deadline=None)
 settings.register_profile("ci", deadline=None, max_examples=500)
@@ -30,7 +33,10 @@ def seeded_db(db: sqlite3.Connection) -> sqlite3.Connection:
 
 
 @pytest.fixture
-def cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Cli:
+def cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> "Cli":
+    # imported here so that only the CLI tests fail while the CLI does not import
+    from cli_world import make_cli
+
     return make_cli(tmp_path, capsys)
 
 
