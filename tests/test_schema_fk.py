@@ -25,6 +25,7 @@ FOREIGN_KEYS = [
     ("route_groups", "group_id", "groups", CASCADE),
     ("plan_routes", "global_route_id", "global_routes", SET_NULL),
     ("plan_route_parts", "route_id", "plan_routes", CASCADE),
+    ("scheduler_state", "full_run_id", "resolve_runs", SET_NULL),
     ("resolve_runs", "resolver_id", "resolvers", CASCADE),
     ("resolve_run_resolvers", "run_id", "resolve_runs", CASCADE),
     ("resolve_run_resolvers", "resolver_id", "resolvers", CASCADE),

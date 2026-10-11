@@ -1,3 +1,4 @@
+import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -69,6 +70,12 @@ def test_db_newer_than_known_migrations_is_rejected(db: sqlite3.Connection) -> N
 def test_load_migrations_starts_with_init() -> None:
     assert load_migrations()[0].version == 1
     assert load_migrations()[0].name == "init"
+
+
+def test_init_migration_matches_design_data_model() -> None:
+    design = (Path(__file__).parents[1] / "docs" / "design.md").read_text(encoding="utf-8")
+    section = design[design.index("\n## 5. ") : design.index("\n## 6. ")]
+    assert "".join(re.findall(r"^```sql\n(.*?)^```$", section, re.DOTALL | re.MULTILINE)) == load_migrations()[0].sql
 
 
 def test_parse_migrations_orders_by_number() -> None:
