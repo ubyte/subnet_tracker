@@ -49,6 +49,11 @@ def _ask_on_terminal(prompt: str) -> bool | None:
 
 
 type Confirm = Callable[[str], bool | None]
+type WriteOutput = Callable[[Path, str], None]
+
+
+def _write_output(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +66,7 @@ class Runtime:
     confirm: Confirm = _ask_on_terminal
     sleep: Callable[[int], None] = _sleep
     lock_file: Path = TICK_LOCK
+    write_output: WriteOutput = _write_output
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +80,7 @@ class Context:
     clock: Callable[[], Timestamp]
     sleep: Callable[[int], None]
     lock_file: Path
+    write_output: WriteOutput
 
 
 type Handler = Callable[[Context, argparse.Namespace], Outcome]

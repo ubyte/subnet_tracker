@@ -23,6 +23,7 @@ class Done:
     code: ExitCode = ExitCode.OK
     # the command changed data: tick is notified once its transactions are committed
     notify: bool = False
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +79,7 @@ def render(outcome: Outcome, as_json: bool) -> Rendered:
     match outcome:
         case Failed(_, messages):
             return Rendered("", "".join(f"{PROG}: error: {message}\n" for message in messages))
-        case Done(_, data) if as_json:
-            return Rendered(json.dumps(data, ensure_ascii=False, indent=2) + "\n", "")
-        case Done(text):
-            return Rendered(f"{text}\n" if text else "", "")
+        case Done() as done:
+            stderr = "".join(warning(message) for message in done.warnings)
+            stdout = json.dumps(done.data, ensure_ascii=False, indent=2) + "\n" if as_json else (f"{done.text}\n" if done.text else "")
+            return Rendered(stdout, stderr)

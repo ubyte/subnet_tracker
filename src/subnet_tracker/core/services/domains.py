@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from subnet_tracker.core.batches import AddResult, add_names, add_text
 from subnet_tracker.core.db import transaction
 from subnet_tracker.core.domain_view import DomainView, domain_views
-from subnet_tracker.core.domains import Domain, DomainEdit, checked_edit, delete_domains, edit_domains, get_domains, list_domains
+from subnet_tracker.core.domains import Domain, DomainEdit, checked_edit, delete_domains, edit_domains, flip_canonical, get_domains, list_domains
 from subnet_tracker.core.edits import edit_columns
 from subnet_tracker.core.events import EventKind, NewEvent, record_events
 from subnet_tracker.core.groups import edit_domain_groups, find_group
@@ -175,4 +175,66 @@ def remove_domains(conn: sqlite3.Connection, ids: Collection[DomainId], actor: s
         domains = get_domains(conn, ids)
         delete_domains(conn, [d.id for d in domains])
         record_deleted(conn, domains, actor, now)
+    return domains
+
+
+@dataclass(frozen=True, slots=True)
+class ImportedDomain:
+    name: DomainName
+    change: DomainChange
+
+
+def sync_domain(conn: sqlite3.Connection, domain_id: DomainId, change: DomainChange, canonical: DomainName, actor: str, now: Timestamp) -> DomainChanged | FieldError | None:
+    with transaction(conn):
+        checked = _checked(conn, change)
+        if isinstance(checked, FieldError):
+            return checked
+        before = domain_views(conn, [domain_id])
+        if not before:
+            return FieldError("name", "does not exist")
+        view = before[0]
+        if canonical != view.domain.canonical.name:
+            if canonical != view.domain.pair.name:
+                return FieldError("name", f"{canonical} is not the pair of {view.domain.canonical.name}")
+            flip_canonical(conn, domain_id, now)
+        if edits(view.domain, checked.edit):
+            edited = edit_domains(conn, [domain_id], checked.edit, now)
+            if isinstance(edited, FieldError):
+                return edited
+        _edit_memberships(conn, [domain_id], checked, now)
+        after = domain_views(conn, [domain_id])[0]
+        changes = dict(domain_changes(view, after))
+        if view.domain.canonical.name != after.domain.canonical.name:
+            changes = {"name": (view.domain.canonical.name, after.domain.canonical.name), **changes}
+        if not changes:
+            return None
+        changed = DomainChanged(after.domain, changes)
+        record_events(conn, [_event(EventKind.DOMAIN_CHANGED, changed.domain, actor, changed.details)], now)
+        enqueue(conn, [Apply(ReconnectMode.AUTO)], now)
+    return changed
+
+
+def add_imported_domains(conn: sqlite3.Connection, actor: str, text: str, specs: Sequence[ImportedDomain], now: Timestamp) -> tuple[Domain, ...] | FieldError:
+    if not specs:
+        return ()
+    with transaction(conn):
+        checked: list[_Checked] = []
+        for spec in specs:
+            item = _checked(conn, spec.change)
+            if isinstance(item, FieldError):
+                return item
+            checked.append(item)
+        result = add_names(conn, BatchKind.IMPORT, actor, text, [spec.name for spec in specs], now)
+        stored = {domain.canonical.name: domain for domain in list_domains(conn, result.batch_id)}
+        for spec, item in zip(specs, checked, strict=True):
+            domain = stored[spec.name]
+            if edits(domain, item.edit):
+                edited = edit_domains(conn, [domain.id], item.edit, now)
+                if isinstance(edited, FieldError):
+                    return edited
+            _edit_memberships(conn, [domain.id], item, now)
+        found = {domain.canonical.name: domain for domain in list_domains(conn, result.batch_id)}
+        domains = tuple(found[spec.name] for spec in specs)
+        record_events(conn, [_event(EventKind.DOMAIN_ADDED, domain, actor, {"batch_id": result.batch_id}) for domain in domains], now)
+        enqueue(conn, added_requests([domain.id for domain in domains], AddOptions(ReconnectMode.AUTO)), now)
     return domains
