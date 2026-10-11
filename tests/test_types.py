@@ -44,6 +44,12 @@ def test_check_prefix_accepts_limits_and_inherit(value: int | None, limits: rang
     assert check_prefix("prefix_v4", value, limits) is None
 
 
+@pytest.mark.parametrize("flag", [True, False])
+@pytest.mark.parametrize("limits", [PREFIX_V4, PREFIX_V6])
+def test_check_prefix_rejects_bool(flag: bool, limits: range) -> None:
+    assert check_prefix("prefix", flag, limits) == FieldError("prefix", f"prefix must be an integer, got {flag}")
+
+
 @pytest.mark.parametrize(("value", "limits", "message"), [(7, PREFIX_V4, "8 to 32"), (33, PREFIX_V4, "8 to 32"), (15, PREFIX_V6, "16 to 128"), (129, PREFIX_V6, "16 to 128")])
 def test_check_prefix_rejects_out_of_range(value: int, limits: range, message: str) -> None:
     assert check_prefix("prefix", value, limits) == FieldError("prefix", f"prefix /{value} is out of range, expected {message}")

@@ -2,7 +2,7 @@ import pytest
 from hypothesis import given
 
 from subnet_tracker.textio.tokens import Tokens, quote, quoted, tokens
-from textio_strategies import LINE_BREAKS, one_line_text
+from textio_strategies import LINE_BREAKS, one_line_strings
 
 
 @pytest.mark.parametrize(
@@ -35,7 +35,7 @@ def test_line_breaks_are_exactly_what_splitlines_breaks_on() -> None:
     assert {chr(c) for c in range(0x110000) if len(f"a{chr(c)}b".splitlines()) > 1} == set(LINE_BREAKS)
 
 
-@given(one_line_text(min_size=1))
+@given(one_line_strings(min_size=1))
 def test_quoted_word_reads_back_as_itself(text: str) -> None:
     match tokens(f"#{quote(text)} @{quote(text)} ; c"):
         case Tokens(words, "c"):
