@@ -86,9 +86,14 @@ def load_migrations() -> tuple[Migration, ...]:
     return parse_migrations({f.name: f.read_text(encoding="utf-8") for f in root.iterdir() if f.name.endswith(".sql")})
 
 
+def schema_version(conn: sqlite3.Connection) -> int:
+    version: int = conn.execute("PRAGMA user_version").fetchone()[0]
+    return version
+
+
 def apply_migrations(conn: sqlite3.Connection, migrations: Sequence[Migration]) -> tuple[int, ...]:
     with transaction(conn):
-        todo = pending_migrations(migrations, conn.execute("PRAGMA user_version").fetchone()[0])
+        todo = pending_migrations(migrations, schema_version(conn))
         for m in todo:
             conn.executescript(m.sql)
             conn.execute(f"PRAGMA user_version = {m.version}")

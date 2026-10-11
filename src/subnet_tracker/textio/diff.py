@@ -1,6 +1,6 @@
 from collections.abc import Iterable, Mapping
 
-from subnet_tracker.core.settings import SettingError, SettingValue, check_key, parse_setting, setting_state
+from subnet_tracker.core.settings import SettingError, SettingValue, parse_setting, setting_state
 from subnet_tracker.discovery.www import domain_names
 from subnet_tracker.textio.changes import Changes, ImportDiff, ImportMode, SettingChange, Update
 from subnet_tracker.textio.model import DomainLine, DuplicateLine, ExportDomain, ExportFile, ExportGroup, ExportRoute, GroupSection, ImportFile, RouteLine, SettingLine
@@ -67,8 +67,8 @@ def _settings(current: Mapping[str, str], lines: Iterable[SettingLine], mode: Im
     errors = []
     for line in lines:
         match parse_setting(line.key, line.value):
-            case SettingError(key, message):
-                errors.append(ParseError(line.line, f"{key}: {message}" if check_key(key) is None else message))
+            case SettingError() as error:
+                errors.append(ParseError(line.line, str(error)))
             case value:
                 wanted[value.key] = value
     if mode is ImportMode.REPLACE:

@@ -132,6 +132,9 @@ class SettingError:
     key: str
     message: str
 
+    def __str__(self) -> str:
+        return f"{self.key}: {self.message}" if self.key in _REGISTRY else self.message
+
 
 @dataclass(frozen=True, slots=True)
 class SettingValue:
