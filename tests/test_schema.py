@@ -114,7 +114,7 @@ def test_rows_cover_every_table(db: sqlite3.Connection) -> None:
 
 def test_named_indexes_and_triggers(db: sqlite3.Connection) -> None:
     objects = {(row["type"], row["name"]) for row in db.execute("SELECT type, name FROM sqlite_schema WHERE type IN ('index', 'trigger') AND name NOT LIKE 'sqlite_%'")}
-    indexes = {"domains_batch", "names_canonical", "names_pair", "names_last_attempt", "names_last_success", "name_resolves_due", "addresses_range"}
+    indexes = {"domains_batch", "names_canonical", "names_pair", "names_last_attempt", "names_last_success", "name_resolves_due", "addresses_range", "events_domain"}
     assert objects == {("index", name) for name in indexes} | {("trigger", "names_pair_shape")}
 
 
