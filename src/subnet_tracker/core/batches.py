@@ -91,6 +91,10 @@ def get_batch(conn: sqlite3.Connection, batch_id: BatchId) -> BatchSummary | Non
     return None if row is None else BatchSummary(_batch(row), tuple(reversed(list_domains(conn, batch_id))))
 
 
+def batch_exists(conn: sqlite3.Connection, batch_id: BatchId) -> bool:
+    return conn.execute("SELECT 1 FROM add_batches WHERE id = ?", (batch_id,)).fetchone() is not None
+
+
 def list_batches(conn: sqlite3.Connection, limit: int) -> tuple[Batch, ...]:
     return tuple(_batch(row) for row in conn.execute(_SELECT + " ORDER BY id DESC LIMIT ?", (limit,)))
 

@@ -1,3 +1,4 @@
+import io
 import os
 import pwd
 import sqlite3
@@ -34,29 +35,51 @@ def test_bad_arguments_are_usage_errors(cli: Cli, argv: tuple[str, ...]) -> None
 def test_help_lists_the_commands(cli: Cli) -> None:
     result = cli("--help")
     assert (result.code, result.err) == (0, "")
-    assert all(name in result.out for name in ("settings", "db"))
+    assert all(name in result.out for name in ("settings", "db", "add", "domain", "batch"))
 
 
-def test_defaults_are_the_installed_paths_and_the_unix_user() -> None:
+def test_defaults_are_the_installed_paths_and_the_unix_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SUDO_USER", raising=False)
     runtime = Runtime()
     assert (CONFIG_FILE, runtime.trigger_file, runtime.user()) == (Path("/etc/subnet-tracker/config.toml"), TRIGGER_FILE, pwd.getpwuid(os.getuid()).pw_name)
 
 
 ROOT = pwd.getpwuid(0).pw_name
-SOMEONE = next(p for p in pwd.getpwall() if p.pw_uid != 0)
 
 
-@pytest.mark.parametrize(
-    ("uid", "environ", "user"),
-    [
-        (0, {"SUDO_USER": "alice"}, "alice"),
-        (0, {}, ROOT),
-        (0, {"SUDO_USER": ""}, ROOT),
-        (SOMEONE.pw_uid, {"SUDO_USER": "alice"}, SOMEONE.pw_name),
-    ],
-)
-def test_sudo_caller_is_the_user_only_for_root(uid: int, environ: dict[str, str], user: str) -> None:
-    assert unix_user(uid, environ) == user
+@pytest.mark.parametrize(("environ", "user"), [({"SUDO_USER": "alice"}, "alice"), ({}, ROOT), ({"SUDO_USER": ""}, ROOT)])
+def test_sudo_caller_is_the_user_for_root(environ: dict[str, str], user: str) -> None:
+    assert unix_user(0, environ) == user
+
+
+def test_sudo_caller_is_ignored_for_other_uids() -> None:
+    someone = next((p for p in pwd.getpwall() if p.pw_uid != 0), None)
+    if someone is None:
+        pytest.skip("no passwd entry besides root")
+    assert unix_user(someone.pw_uid, {"SUDO_USER": "alice"}) == someone.pw_name
+
+
+def test_default_stdin_is_the_process_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO("a.com\n"))
+    assert Runtime().stdin() == "a.com\n"
+
+
+def test_default_confirmation_needs_a_terminal(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO("yes\n"))
+    assert Runtime().confirm("delete a.com?") is None
+    assert capsys.readouterr().err == ""
+
+
+class Terminal(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+@pytest.mark.parametrize(("answer", "confirmed"), [("y\n", True), (" YES \n", True), ("\n", False), ("no\n", False), ("", False)])
+def test_default_confirmation_asks_on_stderr(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], answer: str, confirmed: bool) -> None:
+    monkeypatch.setattr(sys, "stdin", Terminal(answer))
+    assert Runtime().confirm("delete a.com?") is confirmed
+    assert capsys.readouterr().err == "delete a.com? [y/N] "
 
 
 def test_uid_without_passwd_entry_is_the_number(monkeypatch: pytest.MonkeyPatch) -> None:

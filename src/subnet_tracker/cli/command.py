@@ -2,6 +2,7 @@ import argparse
 import os
 import pwd
 import sqlite3
+import sys
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -30,11 +31,29 @@ def _process_user() -> str:
     return unix_user(os.getuid(), os.environ)
 
 
+def _read_stdin() -> str:
+    return sys.stdin.read()
+
+
+def _ask_on_terminal(prompt: str) -> bool | None:
+    if not sys.stdin.isatty():
+        return None
+    sys.stderr.write(f"{prompt} [y/N] ")
+    sys.stderr.flush()
+    return sys.stdin.readline().strip().lower() in ("y", "yes")
+
+
+type Confirm = Callable[[str], bool | None]
+
+
 @dataclass(frozen=True, slots=True)
 class Runtime:
     trigger_file: Path = TRIGGER_FILE
     clock: Callable[[], Timestamp] = _clock
     user: Callable[[], str] = _process_user
+    stdin: Callable[[], str] = _read_stdin
+    # None when there is no terminal to ask on
+    confirm: Confirm = _ask_on_terminal
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +62,8 @@ class Context:
     conn: sqlite3.Connection
     now: Timestamp
     actor: str
+    stdin: Callable[[], str]
+    confirm: Confirm
 
 
 type Handler = Callable[[Context, argparse.Namespace], Outcome]

@@ -51,6 +51,15 @@ def normalize_name(host: str) -> DomainName | Rejected:
     return name
 
 
+def unicode_name(name: DomainName) -> str:
+    if not any(label.startswith("xn--") for label in name.split(".")):
+        return name
+    try:
+        return idna.decode(name)
+    except idna.IDNAError:
+        return name
+
+
 def _network(text: str) -> Network | None:
     try:
         return ip_network(text, strict=False)
@@ -86,6 +95,19 @@ def _classify(token: str) -> _Host | Network | Rejected:
 def _tokens(text: str) -> Iterator[tuple[int, str]]:
     for line, content in enumerate(text.splitlines(), 1):
         yield from ((line, token) for token in _SEPARATORS.split(content) if token)
+
+
+# names only, as domain lists: URLs, addresses and wildcards are errors
+def parse_names(text: str) -> ParseResult[tuple[DomainName, ...]]:
+    names: list[DomainName] = []
+    errors: list[ParseError] = []
+    for line, token in _tokens(text):
+        match Rejected("wildcards are not supported") if token.startswith(WILDCARD) else normalize_name(token):
+            case Rejected(reason):
+                errors.append(ParseError(line, f"{token!r}: {reason}"))
+            case name:
+                names.append(name)
+    return ParseResult(tuple(names), tuple(errors))
 
 
 def parse_paste(text: str, existing: Container[DomainName]) -> ParseResult[PastePlan]:
