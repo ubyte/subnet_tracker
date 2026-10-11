@@ -13,7 +13,18 @@ from subnet_tracker.core.db import MigrationError, connect, load_migrations, pen
 from subnet_tracker.core.settings import SettingsError
 from subnet_tracker.core.trigger import notify_tick
 
-COMMANDS: tuple[Callable[[Commands], None], ...] = (add.register, domain.register, group.register, tag.register, route.register, resolver.register, batch.register, settings.register, db.register, tick.register)
+COMMANDS: tuple[Callable[[Commands], None], ...] = (
+    add.register,
+    domain.register,
+    group.register,
+    tag.register,
+    route.register,
+    resolver.register,
+    batch.register,
+    settings.register,
+    db.register,
+    tick.register,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
