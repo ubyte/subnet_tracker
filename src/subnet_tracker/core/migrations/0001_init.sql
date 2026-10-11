@@ -200,7 +200,7 @@ CREATE TABLE settings (                     -- типы значений зад�
 
 CREATE TABLE scheduler_state (              -- одна строка
   id                    INTEGER PRIMARY KEY CHECK (id = 1),
-  full_run_id           INTEGER,            -- текущий полный проход, NULL если не идёт
+  full_run_id           INTEGER REFERENCES resolve_runs (id) ON DELETE SET NULL,   -- текущий полный проход, NULL если не идёт
   full_cursor_name_id   INTEGER,            -- последнее обработанное имя прохода
   last_full_started_at  INTEGER,
   last_cleanup_at       INTEGER
