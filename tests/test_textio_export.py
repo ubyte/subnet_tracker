@@ -2,17 +2,18 @@ from dataclasses import replace
 from ipaddress import ip_address, ip_network
 from random import Random
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from subnet_tracker.discovery.parse import Network
 from subnet_tracker.discovery.www import domain_names
-from subnet_tracker.textio.export import render_export
+from subnet_tracker.textio.export import LineBreaks, render_export
 from subnet_tracker.textio.lines import MAX_GROUP_NAME, MAX_TAG_NAME, PREFIX_V4, PREFIX_V6
 from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute, ExportSetting, ImportFile
 from subnet_tracker.textio.parse import parse_import
 from subnet_tracker.types import DomainName, Timestamp
-from textio_strategies import one_line_text, trimmed_text
+from textio_strategies import LINE_BREAKS, one_line_text, trimmed_text
 
 HEADER = "# subnet-tracker export v1\n"
 T0 = Timestamp(1791688800)
@@ -113,6 +114,41 @@ def test_addresses_are_rendered_only_when_given() -> None:
     assert render_export(ExportFile(addresses=())) == HEADER + "\n[addresses]\n"
 
 
+_NET = ip_network("10.0.0.0/8")
+_IP = ip_address("9.0.0.1")
+
+
+@pytest.mark.parametrize(
+    ("model", "field"),
+    [
+        (ExportFile(settings=(ExportSetting("a.b", "x\ny"),)), "setting 'a.b' value"),
+        (ExportFile(settings=(ExportSetting("a\rb", "x"),)), "setting 'a\\rb'"),
+        (ExportFile(groups=(ExportGroup("G\x85"),)), "group 'G\\x85'"),
+        (ExportFile(groups=(ExportGroup("G", description="a\u2028b"),)), "group 'G' description"),
+        (ExportFile(domains=(domain("a.com\n[routes]"),)), "domain 'a.com\\n[routes]'"),
+        (ExportFile(domains=(domain("a.com", groups=frozenset({"G\x0b"})),)), "domain 'a.com' group 'G\\x0b'"),
+        (ExportFile(domains=(domain("a.com", tags=frozenset({"t\x1c"})),)), "domain 'a.com' tag 't\\x1c'"),
+        (ExportFile(domains=(domain("a.com", comment="a\r\nb"),)), "domain 'a.com' comment"),
+        (ExportFile(routes=(ExportRoute(_NET, groups=frozenset({"G\u2029"})),)), "route 10.0.0.0/8 group 'G\\u2029'"),
+        (ExportFile(routes=(ExportRoute(_NET, comment="c\x0c"),)), "route 10.0.0.0/8 comment"),
+        (ExportFile(addresses=(ExportAddress(DomainName("a.com\x1d"), _IP, "system", T0, T0),)), "address 'a.com\\x1d'"),
+        (ExportFile(addresses=(ExportAddress(DomainName("a.com"), _IP, "x\n[routes]\n0.0.0.0/1", T0, T0),)), "address 'a.com' 9.0.0.1 resolver 'x\\n[routes]\\n0.0.0.0/1'"),
+    ],
+)
+def test_field_with_a_line_break_is_refused_by_name(model: ExportFile, field: str) -> None:
+    assert render_export(model) == LineBreaks((field,))
+
+
+@pytest.mark.parametrize("brk", LINE_BREAKS)
+def test_every_line_break_is_refused(brk: str) -> None:
+    assert render_export(ExportFile(domains=(domain("a.com", comment=f"a{brk}"),))) == LineBreaks(("domain 'a.com' comment",))
+
+
+def test_all_fields_with_line_breaks_are_listed_in_order() -> None:
+    model = ExportFile(groups=(ExportGroup("G", description="\n"),), domains=(domain("b.com", tags=frozenset({"y\n", "x\n"}), comment="\n"), domain("a.com", comment="\n")))
+    assert render_export(model) == LineBreaks(("domain 'a.com' comment", "domain 'b.com' comment", "domain 'b.com' tag 'x\\n'", "domain 'b.com' tag 'y\\n'", "group 'G' description"))
+
+
 def _optional(allowed: range) -> st.SearchStrategy[int | None]:
     return st.none() | st.integers(allowed.start, allowed.stop - 1)
 
@@ -168,9 +204,15 @@ def _contents(model: ExportFile) -> tuple[frozenset[object], ...]:
     return frozenset(model.settings), frozenset(model.groups), frozenset(model.domains), frozenset(model.routes)
 
 
+def _rendered(model: ExportFile) -> str:
+    text = render_export(model)
+    assert isinstance(text, str), text
+    return text
+
+
 @given(models())
 def test_parse_import_reads_the_export_back(model: ExportFile) -> None:
-    parsed = parse_import(render_export(model))
+    parsed = parse_import(_rendered(model))
     assert parsed.errors == ()
     assert parsed.value.duplicates == ()
     assert _contents(_exported(parsed.value)) == _contents(model)
