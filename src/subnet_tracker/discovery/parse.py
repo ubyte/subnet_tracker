@@ -88,6 +88,19 @@ def _tokens(text: str) -> Iterator[tuple[int, str]]:
         yield from ((line, token) for token in _SEPARATORS.split(content) if token)
 
 
+# names only, as domain lists: URLs, addresses and wildcards are errors
+def parse_names(text: str) -> ParseResult[tuple[DomainName, ...]]:
+    names: list[DomainName] = []
+    errors: list[ParseError] = []
+    for line, token in _tokens(text):
+        match Rejected("wildcards are not supported") if token.startswith(WILDCARD) else normalize_name(token):
+            case Rejected(reason):
+                errors.append(ParseError(line, f"{token!r}: {reason}"))
+            case name:
+                names.append(name)
+    return ParseResult(tuple(names), tuple(errors))
+
+
 def parse_paste(text: str, existing: Container[DomainName]) -> ParseResult[PastePlan]:
     names: list[DomainName] = []
     networks: dict[Network, None] = {}

@@ -13,6 +13,7 @@ _SELECT = "SELECT id, ts, kind, actor, domain_id, name, details FROM events"
 
 class EventKind(StrEnum):
     DOMAIN_ADDED = "domain.added"
+    DOMAIN_CHANGED = "domain.changed"
     DOMAIN_DELETED = "domain.deleted"
     ADDRESS_NEW = "address.new"
     ADDRESS_EXPIRED = "address.expired"

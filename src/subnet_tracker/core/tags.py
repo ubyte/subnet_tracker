@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 
 from subnet_tracker.core.db import transaction
@@ -46,13 +46,20 @@ def list_tags(conn: sqlite3.Connection) -> tuple[TagRow, ...]:
     return tuple(TagRow(_tag(row), row["domains"]) for row in rows)
 
 
+def find_tags(conn: sqlite3.Connection, names: Iterable[str]) -> frozenset[TagId]:
+    return frozenset(TagId(i) for (i,) in conn.execute("SELECT id FROM tags WHERE name IN (SELECT value FROM json_each(?))", (json.dumps(list(names)),)))
+
+
+# names checked by checked_tag_names
+def insert_tags(conn: sqlite3.Connection, names: Sequence[str]) -> frozenset[TagId]:
+    with transaction(conn):
+        conn.executemany("INSERT INTO tags (name) VALUES (?) ON CONFLICT (name) DO NOTHING", [(name,) for name in names])
+        return find_tags(conn, names)
+
+
 def ensure_tags(conn: sqlite3.Connection, names: Iterable[str]) -> frozenset[TagId] | FieldError:
     checked = checked_tag_names(names)
-    if isinstance(checked, FieldError):
-        return checked
-    with transaction(conn):
-        conn.executemany("INSERT INTO tags (name) VALUES (?) ON CONFLICT (name) DO NOTHING", [(name,) for name in checked])
-        return frozenset(TagId(i) for (i,) in conn.execute("SELECT id FROM tags WHERE name IN (SELECT value FROM json_each(?))", (json.dumps(checked),)))
+    return checked if isinstance(checked, FieldError) else insert_tags(conn, checked)
 
 
 def rename_tag(conn: sqlite3.Connection, tag_id: TagId, name: str) -> Tag | FieldError | None:

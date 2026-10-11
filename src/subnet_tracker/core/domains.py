@@ -85,6 +85,10 @@ def get_domain(conn: sqlite3.Connection, domain_id: DomainId) -> Domain | None:
     return next(iter(_domains(conn.execute(_SELECT + " WHERE d.id = ?" + _ORDER, (domain_id,)))), None)
 
 
+def get_domains(conn: sqlite3.Connection, ids: Collection[DomainId]) -> tuple[Domain, ...]:
+    return _domains(conn.execute(_SELECT + f" WHERE d.{_IN_IDS}" + _ORDER, (_ids(ids),)))
+
+
 def find_domain(conn: sqlite3.Connection, name: DomainName) -> Domain | None:
     return next(iter(_domains(conn.execute(_SELECT + " WHERE d.id = (SELECT domain_id FROM names WHERE name = ?)" + _ORDER, (name,)))), None)
 
