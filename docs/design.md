@@ -61,9 +61,25 @@ script-security 2
 client-connect /usr/lib/subnet-tracker/ovpn-client-connect
 ```
 
+В репозитории фрагмент лежит в `deploy/openvpn/server.conf.snippet`, скрипт — в `deploy/openvpn/ovpn-client-connect` и ставится в `/usr/lib/subnet-tracker/ovpn-client-connect`. Сниппет совпадает с фрагментом выше и не добавляет директив, которых в нём нет.
+
 Include через `config` в `server.conf` не подходит: он читается только при старте или SIGHUP, а SIGHUP рвёт соединения всех клиентов. `ccd/DEFAULT` тоже не используем: он применяется только к клиентам без собственного ccd-файла.
 
 Ручные `push "route ..."` в `server.conf` продолжают работать: наш скрипт добавляет маршруты к ним. Но управлять ручными маршрутами удобнее из UI, как глобальными маршрутами.
+
+Скрипт получает от OpenVPN первым аргументом (`$1`) временный файл динамического конфига клиента и дописывает в него `/etc/openvpn/server/subnet-tracker/routes.conf` целиком:
+
+```sh
+#!/bin/sh
+set -e
+routes=/etc/openvpn/server/subnet-tracker/routes.conf
+if [ ! -e "$routes" ]; then
+    exit 0
+fi
+cat "$routes" >> "$1"
+```
+
+Файла может ещё не быть: тогда скрипт выходит с кодом 0 и ничего не дописывает, OpenVPN не отклоняет клиента, ручные `push` остаются. Существующий файл дописывается как есть, вместе с комментариями заголовка: OpenVPN их не читает (раздел 8.4). Нечитаемый файл даёт ненулевой код, и клиент не подключается: после сброса привилегий файл должен читаться (раздел 4.2). Скрипт не записывает `routes.conf`, не подставляет `push-reset` и не открывает management-сокет.
 
 Отдавать ли маршруты IPv4 и IPv6, задают два флага: `routes.push_ipv4` и `routes.push_ipv6` (раздел 8.2). Комплекс сам не проверяет, есть ли на сервере нужный стек: если его нет, администратор выключает соответствующий флаг.
 
@@ -204,7 +220,7 @@ Trigger-файл пишется после коммита транзакции �
 | `/var/lib/subnet-tracker/pki/` | `subnet-tracker`, 0700 | `agent-ca.key`, `agent-ca.pem`, `server.key`, `server.pem`. |
 | `/opt/subnet-tracker/agent/` | root | Собранные бинарники `st-agent` и unit-файлы для скачивания из web UI. |
 | `/etc/openvpn/server/subnet-tracker/routes.conf` | `subnet-tracker`, 0644 | Сгенерированный файл маршрутов; рядом `routes.conf.prev`. Должен читаться `client-connect`-скриптом, который работает после сброса привилегий OpenVPN. |
-| `/usr/lib/subnet-tracker/ovpn-client-connect` | root | Дописывает `routes.conf` в `$1`. |
+| `/usr/lib/subnet-tracker/ovpn-client-connect` | root | `deploy/openvpn/ovpn-client-connect`. Дописывает `routes.conf` в `$1`. Если файла нет — код 0. |
 | `/run/subnet-tracker/` | tmpfiles.d, 0770, `subnet-tracker:subnet-tracker` | `trigger`, `tick.lock`, management-сокет OpenVPN. OpenVPN создаёт сокет как root до сброса привилегий. `trigger` тоже создаёт tmpfiles.d (0660, `subnet-tracker:subnet-tracker`): в него дописывают и web, и CLI любого пользователя группы. |
 
 `deploy/tmpfiles.d/subnet-tracker.conf`:
@@ -939,7 +955,7 @@ push "route-ipv6 2001:67c:4e8::/48"
 
 Пишет файл `write_routes_file(path, text) -> bool` в `openvpn/apply.py`. Вызывающий передаёт путь и текст, уже построенный `render_routes`; функция не считает план, не сохраняет его, не решает, когда переподключать клиентов, и не открывает management-сокет. Сравнение — `routes_hash` переданного текста и файла на диске. Хеши равны — ни файл, ни `<имя>.prev` не меняются: другая шапка при тех же директивах, которые читает OpenVPN, заменой не считается. Хеши различаются, файла нет или он не декодируется как UTF-8 — если файл был, его байты как есть сохраняются в `<имя>.prev` (`routes.conf` даёт `routes.conf.prev`; хранится только непосредственно предыдущая версия), затем текст заменяет файл. Каждая из этих записей — временный файл в том же каталоге, режим `0644` (его читает `client-connect` после сброса привилегий), `fsync` файла, `rename` поверх цели, `fsync` каталога. Каталог создаёт установка, не эта функция: отсутствующий каталог — ошибка. Ошибка ввода-вывода пробрасывается. Если замена самого файла не удалась, прежнее содержимое остаётся на месте (`.prev` к этому моменту может уже совпадать с ним). Возвращается, был ли файл заменён.
 
-Файл пишется сразу, как только план изменился: новые подключения получают маршруты без задержки. Откладывается только переподключение уже подключённых клиентов.
+Файл пишется сразу, как только план изменился: новые подключения получают маршруты без задержки. Откладывается только переподключение уже подключённых клиентов. При подключении `ovpn-client-connect` дописывает этот файл в `$1` целиком (раздел 3.1).
 
 ### 8.5 Переподключение клиентов
 
@@ -1634,6 +1650,7 @@ Server key pin: sha256/3q2+7wAbCdEf...
 | `core/events`, `requests`, `trigger` | Событие и запрос откатываются вместе с изменением во внешней транзакции; события переживают удаление домена; фильтры по типу, домену, резолверу и автору; неизвестный `kind` читается как текст; чистка по `history.retention` на границе; объединение запросов (домены по `trigger`, сильнейший режим `apply`), удаление только прочитанных строк; trigger-файл дописывается строкой, не пишется внутри транзакции, а ошибка записи возвращается, а не бросается. |
 | `deploy` | Содержимое `deploy/systemd/subnet-tracker-tick.{service,timer,path}` и `deploy/tmpfiles.d/subnet-tracker.conf` без запуска systemd: `Type=oneshot`, `User=` и `Group=subnet-tracker`, `ExecStart` — `/opt/subnet-tracker/bin/subnet-tracker tick`, без `RuntimeDirectory=`; таймер `OnCalendar=minutely`, `AccuracySec=1s`, `WantedBy=timers.target`; path `PathModified=/run/subnet-tracker/trigger` после tmpfiles; каталог `0770` и строка `f /run/subnet-tracker/trigger 0660 subnet-tracker subnet-tracker -`; сокет и `tick.lock` tmpfiles не создаёт. |
 | `install.sh` | Без запуска от root: текст `deploy/install.sh`, пути и режимы раздела 4.2, venv `/opt/subnet-tracker` (`python3.12 -m venv` и `pip install` репозитория), имена unit-файлов из `deploy/systemd/` копируются в `/etc/systemd/system/` без переписывания, timer и path включаются, сервис нет; `server_addresses` из `scope global`, в `trusted_networks` добавляются `tunnel_networks`; сниппет nftables — TCP 8080 принимается только с `lo` и `tun0`; строка sysctl `net.ipv4.conf.<iface>.rp_filter = 1` для остальных интерфейсов, без `all`. |
+| `openvpn` client-connect | Текст `deploy/openvpn/ovpn-client-connect` и `deploy/openvpn/server.conf.snippet` без запуска OpenVPN: скрипт дописывает `/etc/openvpn/server/subnet-tracker/routes.conf` в `$1`, отсутствующий файл даёт код 0; сниппет — фрагмент раздела 3.1 и никакие другие директивы. |
 | `core/external` | Выбор заданий: новые первыми, `requested_at`, порог m по `attempted_at` (с ошибками), аренда, ровно n самых старых; приём и валидация результатов; сессии. |
 | `openvpn.reconnect` | `reconnect_due_at`: `on_leave` отодвигается присутствием и не смотрит на `min_interval`, `presence_until` 0 — как отсутствие; `auto` ждёт и окна `last_reconnect_at + min_interval`, и конца присутствия, и `pending_since`; без отложенного режима срока нет. `reconnect_mode` сливает режимы через `strongest_reconnect`; `on_leave` только если маршруты добавились; удаление и плановый проход без добавления режим не ставят; явные `now` и `auto` проходят и без добавления; `after_add` режим не выбирает. `reconnect_plan`: `now` сразу перечисляет всех переданных клиентов с паузой `reconnect_spread`, в их порядке; `auto` и `on_leave` клиентов не возвращают, даже если срок прошёл; `unreconnected = 0` снимает отложение без `client-kill` и без сдвига `last_reconnect_at`; `strategy = none` и режим `none` состояние не меняют. Присутствие: `presence_after_activity` продлевает на `idle_delay`, `presence_after_leave` сокращает до `leave_grace`, переход между страницами не ставит клиентов. |
 | `openvpn` | Подставной management-сервер на unix-сокете: разбор `status 3`, `client-kill` с паузой, ожидание срока внутри `tick`, повтор при недоступности. |

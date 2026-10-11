@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+routes=/etc/openvpn/server/subnet-tracker/routes.conf
+if [ ! -e "$routes" ]; then
+    exit 0
+fi
+cat "$routes" >> "$1"
