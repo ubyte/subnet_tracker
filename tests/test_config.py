@@ -1,3 +1,4 @@
+import re
 import tomllib
 from ipaddress import ip_address, ip_network
 from pathlib import Path
@@ -84,7 +85,7 @@ def test_endpoint_str() -> None:
     ],
 )
 def test_unknown_key_is_error(text: str, where: str) -> None:
-    with pytest.raises(ConfigError, match=rf"{where}.*unknown"):
+    with pytest.raises(ConfigError, match=rf"{re.escape(where)}.*unknown"):
         parse_text(text)
 
 
@@ -92,6 +93,7 @@ def test_unknown_key_is_error(text: str, where: str) -> None:
     ("text", "where"),
     [
         ("db = 5", "db"),
+        ('db = ""', "db"),
         ("[web]\nbind = '10.8.0.1:80'", "web.bind"),
         ("[web]\nbind = ['10.8.0.1']", r"web.bind\[0\]"),
         ("[web]\nbind = ['10.8.0.1:0']", r"web.bind\[0\]"),
@@ -118,11 +120,10 @@ def test_bad_value_is_error(text: str, where: str) -> None:
 
 
 def test_toml_syntax_error(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="config.toml"):
+    with pytest.raises(ConfigError, match=r"config\.toml"):
         load_config(write(tmp_path, "db = "))
 
 
 def test_missing_file(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="config.toml"):
+    with pytest.raises(ConfigError, match=r"config\.toml"):
         load_config(tmp_path / "config.toml")
-
