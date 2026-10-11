@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 type IPNetwork = IPv4Network | IPv6Network
 type Parse[T] = Callable[[object, str], T]
 
+CONFIG_FILE = Path("/etc/subnet-tracker/config.toml")
+
 
 class ConfigError(Exception):
     pass
