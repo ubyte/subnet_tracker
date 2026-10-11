@@ -1,191 +1,31 @@
 from bisect import bisect_right
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
-from enum import StrEnum
 from ipaddress import IPv4Network, IPv6Network, collapse_addresses, ip_network
 
 from subnet_tracker.config import IPNetwork
-from subnet_tracker.types import AddressId, DomainId, GlobalRouteId, GroupId, IPAddress, NameId, ResolverId, RouteKind, Seconds, Timestamp
-
-
-@dataclass(frozen=True, slots=True)
-class Group:
-    id: GroupId
-    enabled: bool = True
-    prefix_v4: int | None = None
-    prefix_v6: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class Domain:
-    id: DomainId
-    enabled: bool = True
-    groups: frozenset[GroupId] = frozenset()
-    prefix_v4: int | None = None
-    prefix_v6: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class Name:
-    id: NameId
-    domain_id: DomainId
-
-
-@dataclass(frozen=True, slots=True)
-class Resolver:
-    id: ResolverId
-    use_for_routes: bool
-    revoked: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class Address:
-    id: AddressId
-    name_id: NameId
-    ip: IPAddress
-
-
-@dataclass(frozen=True, slots=True)
-class Sighting:
-    address_id: AddressId
-    resolver_id: ResolverId
-    last_seen_at: Timestamp
-    answered_at: Timestamp  # name_resolves.answered_at of the address's name and this resolver
-
-
-@dataclass(frozen=True, slots=True)
-class GlobalRoute:
-    id: GlobalRouteId
-    network: IPNetwork
-    enabled: bool = True
-    groups: frozenset[GroupId] = frozenset()
-
-
-@dataclass(frozen=True, slots=True)
-class Snapshot:
-    domains: tuple[Domain, ...] = ()
-    groups: tuple[Group, ...] = ()
-    names: tuple[Name, ...] = ()
-    resolvers: tuple[Resolver, ...] = ()
-    addresses: tuple[Address, ...] = ()
-    sightings: tuple[Sighting, ...] = ()
-    global_routes: tuple[GlobalRoute, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class PlanSettings:
-    retention: Seconds = Seconds(4 * 86400)
-    default_prefix_v4: int = 23
-    default_prefix_v6: int = 48
-    push_ipv4: bool = True
-    push_ipv6: bool = True
-    exclude: tuple[IPNetwork, ...] = ()
-    server_addresses: tuple[IPAddress, ...] = ()
-    tunnel_networks: tuple[IPNetwork, ...] = ()
-
-    def pushes(self, version: int) -> bool:
-        return self.push_ipv4 if version == 4 else self.push_ipv6
-
-
-class PrefixSource(StrEnum):
-    DOMAIN = "domain"
-    GROUP = "group"
-    DEFAULT = "default"
-
-
-@dataclass(frozen=True, slots=True)
-class Prefix:
-    length: int
-    source: PrefixSource
-    group_id: GroupId | None = None
-
-
-class ExclusionReason(StrEnum):
-    BUILTIN = "builtin"
-    SERVER_ADDRESS = "server_address"
-    TUNNEL_NETWORK = "tunnel_network"
-    SETTING = "setting"
-
-
-@dataclass(frozen=True, slots=True)
-class Exclusion:
-    network: IPNetwork
-    reason: ExclusionReason
-
-
-_BUILTIN = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3", "::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8")
-BUILTIN_EXCLUSIONS = tuple(Exclusion(ip_network(n), ExclusionReason.BUILTIN) for n in _BUILTIN)
-
-
-class WarningKind(StrEnum):
-    EXCLUDED = "excluded"
-    TRIMMED = "trimmed"
-
-
-@dataclass(frozen=True, slots=True)
-class PlanWarning:
-    kind: WarningKind
-    network: IPNetwork
-    exclusion: Exclusion
-
-    @property
-    def message(self) -> str:
-        action = "dropped, inside" if self.kind == WarningKind.EXCLUDED else "trimmed around"
-        return f"{self.network} {action} excluded {self.exclusion.network} ({self.exclusion.reason.replace('_', ' ')})"
-
-
-@dataclass(frozen=True, slots=True)
-class AddressSource:
-    address_id: AddressId
-    name_id: NameId
-    domain_id: DomainId
-    prefix: Prefix
-    resolvers: tuple[ResolverId, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class PartAddress:
-    ip: IPAddress
-    sources: tuple[AddressSource, ...]
-
-    @property
-    def names(self) -> tuple[NameId, ...]:
-        return tuple(s.name_id for s in self.sources)
-
-    @property
-    def resolvers(self) -> tuple[ResolverId, ...]:
-        return tuple(sorted({r for s in self.sources for r in s.resolvers}))
-
-
-@dataclass(frozen=True, slots=True)
-class Part:
-    network: IPNetwork
-    addresses: tuple[PartAddress, ...]  # all addresses of the network the part was trimmed from, some may lie outside it
-
-
-@dataclass(frozen=True, slots=True)
-class Route:
-    network: IPNetwork
-    kind: RouteKind
-    parts: tuple[Part, ...] = ()
-    global_route_id: GlobalRouteId | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class PlanStats:
-    networks_v4: int
-    networks_v6: int
-    routes_v4: int
-    routes_v6: int
-
-
-@dataclass(frozen=True, slots=True)
-class RoutePlan:
-    routes: tuple[Route, ...]
-    stats: PlanStats
-    warnings: tuple[PlanWarning, ...]
-
+from subnet_tracker.routes.exclusions import builtin_of, exclusions, family_holes, overlapping, trim
+from subnet_tracker.routes.model import (
+    AddressSource,
+    Domain,
+    Exclusion,
+    GlobalRoute,
+    Group,
+    Part,
+    PartAddress,
+    PlanSettings,
+    PlanStats,
+    PlanWarning,
+    Prefix,
+    PrefixSource,
+    Resolver,
+    Route,
+    RoutePlan,
+    Sighting,
+    Snapshot,
+    WarningKind,
+)
+from subnet_tracker.types import AddressId, GroupId, IPAddress, ResolverId, RouteKind, Seconds
 
 type Fed = tuple[IPAddress, AddressSource]
 
@@ -212,15 +52,6 @@ def effective_prefix(domain: Domain, groups: Mapping[GroupId, Group], settings: 
     return Prefix(settings.default_prefix_v4 if version == 4 else settings.default_prefix_v6, PrefixSource.DEFAULT)
 
 
-def exclusions(settings: PlanSettings) -> tuple[Exclusion, ...]:
-    return (
-        *BUILTIN_EXCLUSIONS,
-        *(Exclusion(ip_network(ip), ExclusionReason.SERVER_ADDRESS) for ip in settings.server_addresses),
-        *(Exclusion(n, ExclusionReason.TUNNEL_NETWORK) for n in settings.tunnel_networks),
-        *(Exclusion(n, ExclusionReason.SETTING) for n in settings.exclude),
-    )
-
-
 def _fed_addresses(snapshot: Snapshot, groups: Mapping[GroupId, Group], settings: PlanSettings) -> list[Fed]:
     domains = {d.id: d for d in snapshot.domains if routable(d.enabled, d.groups, groups)}
     domain_of = {n.id: n.domain_id for n in snapshot.names}
@@ -236,38 +67,22 @@ def _fed_addresses(snapshot: Snapshot, groups: Mapping[GroupId, Group], settings
     return fed
 
 
-def _builtin_of(ip: IPAddress) -> Exclusion | None:
-    return next((e for e in BUILTIN_EXCLUSIONS if ip in e.network), None)
-
-
 def _drop_builtin(fed: Iterable[Fed]) -> tuple[list[Fed], list[PlanWarning]]:
     kept: list[Fed] = []
     dropped: dict[IPAddress, Exclusion] = {}
     for ip, source in fed:
-        if (builtin := _builtin_of(ip)) is None:
+        if (builtin := builtin_of(ip)) is None:
             kept.append((ip, source))
         else:
             dropped[ip] = builtin
     return kept, [PlanWarning(WarningKind.EXCLUDED, ip_network(ip), e) for ip, e in sorted(dropped.items(), key=lambda item: (item[0].version, int(item[0])))]
 
 
-def _cut[N: (IPv4Network, IPv6Network)](piece: N, hole: N) -> Iterable[N]:
-    if not piece.overlaps(hole):
-        return (piece,)
-    return () if piece.subnet_of(hole) else piece.address_exclude(hole)
-
-
-def _trim[N: (IPv4Network, IPv6Network)](network: N, holes: Iterable[N]) -> list[N]:
-    pieces = [network]
-    for hole in holes:
-        pieces = [q for p in pieces for q in _cut(p, hole)]
-    return pieces
-
-
 def _warnings[N: (IPv4Network, IPv6Network)](network: N, holes: Sequence[tuple[N, Exclusion]]) -> list[PlanWarning]:
-    if (inside := next((e for n, e in holes if network.subnet_of(n)), None)) is not None:
+    hit = overlapping(network, holes)
+    if (inside := next((e for n, e in hit if network.subnet_of(n)), None)) is not None:
         return [PlanWarning(WarningKind.EXCLUDED, network, inside)]
-    return [PlanWarning(WarningKind.TRIMMED, network, e) for n, e in holes if network.overlaps(n)]
+    return [PlanWarning(WarningKind.TRIMMED, network, e) for _, e in hit]
 
 
 def _part(network: IPNetwork, fed: Iterable[Fed]) -> Part:
@@ -289,7 +104,7 @@ def _collapse[N: (IPv4Network, IPv6Network)](parts: Mapping[N, list[Fed]]) -> It
 
 def _dns_routes[N: (IPv4Network, IPv6Network)](family: type[N], fed: Iterable[Fed], excluded: Iterable[Exclusion], global_routes: Iterable[GlobalRoute]) -> tuple[list[Route], list[PlanWarning], int]:
     version = 4 if family is IPv4Network else 6
-    holes = [(n, e) for e in excluded if isinstance(n := e.network, family)]
+    holes = family_holes(family, excluded)
     covering = [n for r in global_routes if isinstance(n := r.network, family)]
     origins: defaultdict[N, list[Fed]] = defaultdict(list)
     for ip, source in fed:
@@ -299,7 +114,7 @@ def _dns_routes[N: (IPv4Network, IPv6Network)](family: type[N], fed: Iterable[Fe
     warnings = []
     for origin in sorted(origins):
         warnings += _warnings(origin, holes)
-        for piece in _trim(origin, (n for n, _ in holes)):
+        for piece in trim(origin, (n for n, _ in holes)):
             if not any(piece.subnet_of(g) for g in covering):
                 parts[piece] += origins[origin]
     return list(_collapse(parts)), warnings, len(parts)

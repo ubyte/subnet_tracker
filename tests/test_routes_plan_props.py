@@ -7,7 +7,7 @@ from hypothesis import strategies as st
 
 from routes_world import World
 from subnet_tracker.config import IPNetwork
-from subnet_tracker.routes.plan import PlanSettings, RoutePlan
+from subnet_tracker.routes.model import PlanSettings, RoutePlan
 from subnet_tracker.types import RouteKind
 
 type Interval = tuple[int, int]

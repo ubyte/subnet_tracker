@@ -1,6 +1,7 @@
 from ipaddress import ip_address, ip_network
 
-from subnet_tracker.routes.plan import Address, Domain, GlobalRoute, Group, Name, PlanSettings, Resolver, RoutePlan, Sighting, Snapshot, plan_routes
+from subnet_tracker.routes.model import Address, Domain, GlobalRoute, Group, Name, PlanSettings, Resolver, RoutePlan, Sighting, Snapshot
+from subnet_tracker.routes.plan import plan_routes
 from subnet_tracker.types import AddressId, DomainId, GlobalRouteId, GroupId, NameId, ResolverId, Timestamp
 
 NOW = Timestamp(1_800_000_000)

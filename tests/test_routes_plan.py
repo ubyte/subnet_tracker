@@ -4,7 +4,9 @@ from ipaddress import IPv4Network, ip_address, ip_network
 import pytest
 
 from routes_world import DAY, NOW, SYSTEM, World, cidrs
-from subnet_tracker.routes.plan import BUILTIN_EXCLUSIONS, ExclusionReason, PlanSettings, Prefix, PrefixSource, Route, Snapshot, WarningKind, exclusions, plan_routes
+from subnet_tracker.routes.exclusions import BUILTIN_EXCLUSIONS, exclusions
+from subnet_tracker.routes.model import ExclusionReason, PlanSettings, Prefix, PrefixSource, Route, Snapshot, WarningKind
+from subnet_tracker.routes.plan import plan_routes
 from subnet_tracker.types import RouteKind, Seconds
 
 
