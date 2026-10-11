@@ -1,9 +1,10 @@
 import json
+import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 
-from subnet_tracker.types import JsonValue
+from subnet_tracker.types import FieldError, JsonValue, Timestamp
 
 PROG = "subnet-tracker"
 
@@ -43,6 +44,23 @@ def table(headers: Sequence[str], rows: Iterable[Sequence[str]]) -> str:
     lines = [headers, *rows]
     widths = [max(map(len, column)) for column in zip(*lines, strict=True)]
     return "\n".join("  ".join(cell.ljust(width) for cell, width in zip(line, widths, strict=True)).rstrip() for line in lines)
+
+
+def fields(pairs: Sequence[tuple[str, str]]) -> str:
+    width = max(len(key) for key, _ in pairs)
+    return "\n".join(f"{key.ljust(width)}  {value}".rstrip() for key, value in pairs)
+
+
+def listed(items: Sequence[str]) -> str:
+    return ", ".join(items) or "-"
+
+
+def moment(ts: Timestamp | None) -> str:
+    return "-" if ts is None else time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(ts))
+
+
+def rejected(error: FieldError) -> Failed:
+    return Failed(ExitCode.USAGE, (f"{error.field}: {error.message}",))
 
 
 def warning(message: str) -> str:
