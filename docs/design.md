@@ -475,7 +475,7 @@ CREATE INDEX events_domain ON events (domain_id, id);
 
 **События** пишутся в той же транзакции, что и изменение, которое они описывают. У событий домена `domain_id` и `name` — домен и его каноничное имя, у событий адреса — домен и имя, для которого получен адрес. Событие о резолвере хранит в `details` его `resolver_id` и имя `resolver`; по `resolver_id` работает фильтр по резолверу. Чистка истории удаляет события с `ts < now - history.retention`.
 
-**Кто пишет события и запросы.** Сервисные функции `core`, общие для CLI, web и Agent API: изменение, его события и запросы к `tick` — одна транзакция. Репозитории (`domains.py`, `groups.py` …) событий и запросов не пишут: составные операции (импорт, Undo) вызывают несколько репозиториев и описывают изменение один раз. Trigger-файл пишет точка входа (CLI, web, Agent API) после коммита (раздел 4.1).
+**Кто пишет события и запросы.** Сервисные функции `core` (пакет `core/services/`, модуль на область: `settings.py` …), общие для CLI, web и Agent API: изменение, его события и запросы к `tick` — одна транзакция. Репозитории (`domains.py`, `groups.py` …) событий и запросов не пишут: составные операции (импорт, Undo) вызывают несколько репозиториев и описывают изменение один раз. Trigger-файл пишет точка входа (CLI, web, Agent API) после коммита (раздел 4.1).
 
 **Запросы к `tick`** (`requests.payload`):
 - `resolve_domains` — `{"domain_ids": [...], "trigger": "new_domains" | "manual"}`: новые домены после добавления или [Resolve] и `resolve NAME...`; `trigger` переходит в `resolve_runs`;
@@ -944,6 +944,14 @@ subnet-tracker db migrate
 ```
 
 `agent add` и `agent reissue` выводят конфиг агента (в файл с `-o`) и команду `st-agent enroll`. `add` печатает итог: добавлено, пропущено как дубли, нераспознано. Команды `domain` принимают любое из двух имён домена и действуют на домен целиком: `domain rm www.X` и `domain rm X` удаляют оба имени. `scan` без `--yes` выводит кандидатов и спрашивает подтверждение; без `--group` и `--no-group` создаёт новую группу по правилу из раздела 9.2. `batch undo` удаляет домены партии, которые ещё существуют. Команды, меняющие данные, ставят запрос в `requests` и пишут в trigger-файл. `resolver test` для внешних резолверов выдаёт ошибку: они работают только по заданиям. Режима `on_leave` в CLI нет: присутствие отслеживается только в web UI.
+
+Общие правила CLI:
+- `--config PATH` пишется перед подкомандой, по умолчанию `/etc/subnet-tracker/config.toml`; путь к БД берётся из него.
+- `--json` есть у каждой команды: результат печатается одним JSON-значением в stdout. Ошибки и предупреждения всегда идут текстом в stderr (`subnet-tracker: error: ...`, `subnet-tracker: warning: ...`), в том числе с `--json`.
+- Код `2` — ошибки разбора аргументов и отклонённые значения аргументов (неизвестный ключ настройки, неверное значение); `1` — отказ конфигурации, БД, неверное хранимое значение настройки.
+- Все команды, кроме `db migrate`, требуют существующую БД с последней версией схемы, иначе завершаются с кодом `1` и подсказкой запустить `db migrate`. `db migrate` создаёт БД, применяет миграции и на пустой БД создаёт резолверы по умолчанию.
+- Ошибка записи trigger-файла — предупреждение, код выхода не меняется.
+- `settings get KEY` печатает только значение в текстовой форме. `settings set` и `settings reset` идут через `core/services/settings.py`: значение, событие `setting.changed` (`details`: `key`, `old` — прежнее значение в текстовой форме или `null`, если хранимое значение неверно, `new`) и запрос `apply` с режимом `auto` — одна транзакция. Если строка `settings` от команды не меняется (то же значение), ничего не пишется и trigger-файл не трогается.
 
 ## 11. Конкурентность и отказы
 
@@ -1494,6 +1502,7 @@ src/subnet_tracker/
   config.py
   types.py    NewType, StrEnum, общие dataclass
   core/       db.py, migrations/*.sql, domains.py, names.py, batches.py, groups.py, tags.py, resolvers.py, agents.py, external.py, global_routes.py, settings.py, setting_codecs.py, settings_store.py, events.py, requests.py, trigger.py, addresses.py, plan_store.py, web_devices.py
+  core/services/  settings.py, ... — изменение, его события и запросы к tick одной транзакцией (раздел 5)
   resolver/   run.py, backends.py, classify.py, doh_json.py, expire.py
   routes/     plan.py, budget.py, render.py
   openvpn/    mgmt.py, apply.py, reconnect.py
@@ -1501,7 +1510,7 @@ src/subnet_tracker/
   textio/     export.py, parse.py, diff.py
   pki/        ca.py, issue.py
   agentapi/   server.py, handlers.py
-  cli/        main.py, commands/*.py
+  cli/        main.py (разбор и запуск), command.py (регистрация команд, контекст), output.py (таблица, JSON, коды выхода), commands/*.py (модуль на семейство команд)
   web/        app.py, access.py, csrf.py, gzip_stream.py, main_page.py (build_main_page), views/*.py (main.py, domain.py, bulk_edit.py, scan.py, ...), api/ (browser_dns.py, presence.py, batch_status.py), templates/, static/ (pico.min.css, presence.js, browser-dns.js, page.js)
 tests/
 agent/
