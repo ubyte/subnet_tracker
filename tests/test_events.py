@@ -120,6 +120,12 @@ def test_filters(journal: sqlite3.Connection, where: EventFilter, ids: list[int]
     assert [e.id for e in list_events(journal, where)] == ids
 
 
+def test_domain_filter_uses_the_index(db: sqlite3.Connection) -> None:
+    plan = " ".join(row["detail"] for row in db.execute("EXPLAIN QUERY PLAN SELECT * FROM events WHERE domain_id = ? ORDER BY id DESC LIMIT ?", (1, 10)))
+    assert "USING INDEX events_domain" in plan
+    assert "TEMP B-TREE" not in plan
+
+
 def test_history_cutoff() -> None:
     assert history_cutoff(NOW, Seconds(90 * 86400)) == NOW - 90 * 86400
 

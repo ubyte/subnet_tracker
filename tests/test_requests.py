@@ -3,6 +3,7 @@ import sqlite3
 
 import pytest
 
+from db_rows import insert
 from domains_world import NOW, count, paste_and_fail
 from subnet_tracker.core.db import transaction
 from subnet_tracker.core.requests import (
@@ -105,6 +106,32 @@ def test_finish_removes_only_claimed_rows(db: sqlite3.Connection) -> None:
     enqueue(db, [Apply(NOW_MODE)], NOW)
     assert finish_requests(db, claim) == 2
     assert claim_requests(db) == Claim(RequestId(3), TickWork(apply=NOW_MODE))
+
+
+@pytest.mark.parametrize(
+    ("kind", "payload", "error"),
+    [
+        ("resolve_domains", "{}", "resolve_domains {}: KeyError: 'domain_ids'"),
+        (
+            "resolve_domains",
+            '{"domain_ids": [1], "trigger": "timer"}',
+            'resolve_domains {"domain_ids": [1], "trigger": "timer"}: ValueError: domains are resolved on request only with trigger new_domains or manual, got timer',
+        ),
+        ("resolve_domains", '{"domain_ids": ["1"], "trigger": "manual"}', 'resolve_domains {"domain_ids": ["1"], "trigger": "manual"}: ValueError: domain_ids must be a list of integers, got [\'1\']'),
+        ("resolve_domains", '{"domain_ids": 1, "trigger": "manual"}', 'resolve_domains {"domain_ids": 1, "trigger": "manual"}: ValueError: domain_ids must be a list of integers, got 1'),
+        ("apply", '{"reconnect": 5}', 'apply {"reconnect": 5}: ValueError: 5 is not a valid ReconnectMode'),
+        ("apply", "[]", "apply []: TypeError: list indices must be integers or slices, not str"),
+    ],
+    ids=["missing key", "timer trigger", "text ids", "scalar ids", "unknown mode", "array payload"],
+)
+def test_undecodable_row_is_claimed_as_invalid_between_good_ones(db: sqlite3.Connection, kind: str, payload: str, error: str) -> None:
+    enqueue(db, [Apply(AUTO)], NOW)
+    insert(db, "requests", {"kind": kind, "payload": payload, "created_at": NOW})
+    enqueue(db, [ResolveDomains(ids(1), NEW)], NOW)
+    claim = claim_requests(db)
+    assert claim == Claim(RequestId(3), TickWork(new_domains=ids(1), apply=AUTO), ((RequestId(2), error),))
+    assert finish_requests(db, claim) == 3
+    assert count(db, "requests") == 0
 
 
 def test_requests_roll_back_with_the_change(db: sqlite3.Connection) -> None:
