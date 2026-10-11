@@ -13,7 +13,8 @@ from cli_world import Cli, Result
 from db_rows import ROWS, insert
 from domains_world import count
 from subnet_tracker.cli.command import Runtime
-from subnet_tracker.core.requests import Apply, Claim, ResolveAll, ResolveDomains, enqueue
+from subnet_tracker.core.db import transaction
+from subnet_tracker.core.requests import Apply, Claim, ResolveAll, ResolveDomains, enqueue, finish_requests
 from subnet_tracker.core.settings import ApplySettings
 from subnet_tracker.core.settings_store import set_setting
 from subnet_tracker.tick import POLL_SECONDS, RESOLVE_PORTION, TICK_LOCK, WAIT_LIMIT, ApplyKind, Portion, ReconnectState, ResolveRequest, TickBusy, TickReport, apply_mode, reconnect_due_at, run_tick
@@ -183,6 +184,14 @@ def test_a_held_lock_skips_the_tick_and_leaves_requests(db: sqlite3.Connection, 
         pass
 
 
+def finish_stored(conn: sqlite3.Connection, claim: Claim | None) -> None:
+    # A resolve step finishes the claim in the transaction that stores results, and only when tick handed it one.
+    if claim is None:
+        return
+    with transaction(conn):
+        finish_requests(conn, claim)
+
+
 def test_a_failed_step_leaves_the_request_and_the_lock(db: sqlite3.Connection, tmp_path: Path, domain: DomainId) -> None:
     enqueue(db, [ResolveDomains(ids(domain))], NOW)
 
@@ -197,10 +206,50 @@ def test_a_failed_step_leaves_the_request_and_the_lock(db: sqlite3.Connection, t
         pass
 
 
+def test_a_resolve_claim_is_finished_with_the_stored_results(db: sqlite3.Connection, tmp_path: Path, domain: DomainId) -> None:
+    enqueue(db, [ResolveDomains(ids(domain), NEW)], NOW)
+
+    class Stores(Steps):
+        def resolve_requested(self, conn: sqlite3.Connection, request: ResolveRequest, claim: Claim | None, now: Timestamp) -> None:
+            assert claim is not None
+            finish_stored(conn, claim)
+            raise RuntimeError("stored")
+
+    with pytest.raises(RuntimeError, match="stored"):
+        tick(db, tmp_path, Stores(), at(NOW))
+    assert count(db, "requests") == 0
+
+
+def test_a_failed_apply_keeps_the_claim_for_retry(db: sqlite3.Connection, tmp_path: Path, domain: DomainId) -> None:
+    enqueue(db, [ResolveDomains(ids(domain), NEW), Apply(AUTO)], NOW)
+
+    @dataclass
+    class Stores(Steps):
+        claims: list[Claim | None] = field(default_factory=list)
+
+        def resolve_requested(self, conn: sqlite3.Connection, request: ResolveRequest, claim: Claim | None, now: Timestamp) -> None:
+            self.claims.append(claim)
+            finish_stored(conn, claim)
+
+        def apply(self, conn: sqlite3.Connection, kind: ApplyKind, now: Timestamp) -> bool:
+            raise RuntimeError("apply failed")
+
+    steps = Stores()
+    with pytest.raises(RuntimeError, match="apply failed"):
+        tick(db, tmp_path, steps, at(NOW))
+    assert steps.claims == [None]
+    assert count(db, "requests") == 2
+    with held(lock_path(tmp_path)):
+        pass
+
+
 def test_commit_and_finish_roll_back_together(db: sqlite3.Connection, tmp_path: Path) -> None:
     enqueue(db, [Apply(ON_LEAVE)], NOW)
 
     class Stop(Steps):
+        def resolve_requested(self, conn: sqlite3.Connection, request: ResolveRequest, claim: Claim | None, now: Timestamp) -> None:
+            finish_stored(conn, claim)
+
         def commit(self, conn: sqlite3.Connection, mode: ReconnectMode | None, now: Timestamp) -> None:
             assert conn.in_transaction
             if mode == ON_LEAVE:
