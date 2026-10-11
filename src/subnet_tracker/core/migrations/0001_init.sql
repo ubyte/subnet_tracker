@@ -164,7 +164,7 @@ CREATE TABLE plan_state (                   -- одна строка: сводк
   plan_sha256      TEXT    NOT NULL CHECK (length(plan_sha256) = 64),
   routes_v4        INTEGER NOT NULL,
   routes_v6        INTEGER NOT NULL,
-  raw_v4           INTEGER NOT NULL,        -- сетей до бюджета
+  raw_v4           INTEGER NOT NULL,        -- networks before aggregation (parts before collapse)
   raw_v6           INTEGER NOT NULL,
   extra_ratio_v4   REAL    NOT NULL,        -- доля адресов, добавленных агрегацией
   extra_ratio_v6   REAL    NOT NULL,
@@ -186,8 +186,8 @@ CREATE TABLE plan_routes (                  -- маршруты текущего
 
 CREATE TABLE plan_route_parts (             -- сети из DNS, из которых собран маршрут (для kind = 'dns' — одна)
   route_id  INTEGER NOT NULL REFERENCES plan_routes (id) ON DELETE CASCADE,
-  cidr      TEXT    NOT NULL,
-  first_bin BLOB    NOT NULL,
+  cidr      TEXT    NOT NULL,               -- сеть части после урезания
+  first_bin BLOB    NOT NULL,               -- исходная сеть: шире cidr, если часть урезана
   last_bin  BLOB    NOT NULL,
   PRIMARY KEY (route_id, cidr)
 ) STRICT;
@@ -281,7 +281,7 @@ CREATE TABLE apply_runs (
   routes_added        INTEGER NOT NULL,
   routes_removed      INTEGER NOT NULL,
   diff                TEXT    NOT NULL CHECK (json_valid(diff)),   -- {"added": [...], "removed": [...]}
-  file_sha256         TEXT    NOT NULL CHECK (length(file_sha256) = 64),
+  file_sha256         TEXT    NOT NULL CHECK (length(file_sha256) = 64),   -- routes_hash текста файла
   file_changed        INTEGER NOT NULL CHECK (file_changed IN (0, 1)),
   reconnect           TEXT    NOT NULL CHECK (reconnect IN ('none', 'now', 'auto', 'on_leave')),
   clients_total       INTEGER,

@@ -1,9 +1,12 @@
 import sqlite3
 from dataclasses import replace
 from hashlib import sha256
-from ipaddress import ip_address, ip_network
+from ipaddress import IPv4Network, ip_address, ip_network
 
 import pytest
+
+from routes_world import NOW, World
+from subnet_tracker.core.db import transaction
 from subnet_tracker.core.plan_store import (
     ApplyRun,
     NewApplyRun,
@@ -26,9 +29,6 @@ from subnet_tracker.core.plan_store import (
     save_reconnect_state,
     unreconnected_routes,
 )
-
-from routes_world import NOW, World
-from subnet_tracker.core.db import transaction
 from subnet_tracker.routes.model import (
     AddressSource,
     BudgetWarning,
@@ -40,6 +40,8 @@ from subnet_tracker.routes.model import (
     PlanSettings,
     PlanStats,
     PlanWarning,
+    Prefix,
+    PrefixSource,
     Route,
     RoutePlan,
     WarningKind,
@@ -55,8 +57,6 @@ from subnet_tracker.types import (
     NameId,
     PendingReconnect,
     PlanRouteId,
-    Prefix,
-    PrefixSource,
     ReconnectMode,
     ResolverId,
     RouteKind,
@@ -201,12 +201,12 @@ def test_trimmed_part_keeps_the_source_network(db: sqlite3.Connection) -> None:
     plan = world.plan(PlanSettings(server_addresses=(ip_address("1.2.2.1"),)))
     save_plan(db, plan, NOW)
     loaded = stored(db)
-    origin = ip_network("1.2.2.0/23")
+    origin = IPv4Network("1.2.2.0/23")
     parts = [part for route in loaded.routes for part in route.parts]
     assert parts
     assert all((part.first, part.last) == (origin.network_address, origin.broadcast_address) for part in parts)
     assert any(ip_address("1.2.3.4") not in part.network for part in parts)
-    assert all(part.network.subnet_of(origin) and part.network != origin for part in parts)
+    assert all(isinstance(part.network, IPv4Network) and part.network.subnet_of(origin) and part.network != origin for part in parts)
     assert loaded.warnings == (PlanWarning(WarningKind.TRIMMED, origin, Exclusion(ip_network("1.2.2.1/32"), ExclusionReason.SERVER_ADDRESS)),)
 
 
