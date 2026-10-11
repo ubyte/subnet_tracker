@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 type IPNetwork = IPv4Network | IPv6Network
 type Parse[T] = Callable[[object, str], T]
 
-_YEAR = Seconds(365 * 86400)
-
 
 class ConfigError(Exception):
     pass
@@ -37,7 +35,7 @@ class WebConfig:
     allowed_hosts: tuple[str, ...] = ()
     trusted_networks: tuple[IpRange, ...] = tuple(map(parse_ip_range, ("127.0.0.0/8", "::1", "10.8.0.0/24")))
     admin_password_hash: str = ""
-    remember_for: Seconds = _YEAR
+    remember_for: Seconds = Seconds(365 * 86400)
     secret_key_file: Path = Path("/var/lib/subnet-tracker/secret_key")
 
 
