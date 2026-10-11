@@ -33,14 +33,16 @@ def connect(path: Path) -> sqlite3.Connection:
 
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Iterator[None]:
-    conn.execute("BEGIN IMMEDIATE")
+    nested = conn.in_transaction
+    conn.execute("SAVEPOINT nested" if nested else "BEGIN IMMEDIATE")
     try:
         yield
     except BaseException:
         if conn.in_transaction:
-            conn.execute("ROLLBACK")
+            for sql in ("ROLLBACK TO nested", "RELEASE nested") if nested else ("ROLLBACK",):
+                conn.execute(sql)
         raise
-    conn.execute("COMMIT")
+    conn.execute("RELEASE nested" if nested else "COMMIT")
 
 
 def parse_migrations(sources: Mapping[str, str]) -> tuple[Migration, ...]:

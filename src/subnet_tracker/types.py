@@ -145,6 +145,13 @@ def one_line_text(field: str, text: str) -> str | FieldError:
     return text.strip()
 
 
+def one_line_name(field: str, text: str, limit: int) -> str | FieldError:
+    name = one_line_text(field, text)
+    if isinstance(name, str) and not 1 <= len(name) <= limit:
+        return FieldError(field, f"must be 1 to {limit} characters long")
+    return name
+
+
 def check_prefix(field: str, prefix: int | None, limits: range) -> FieldError | None:
     if isinstance(prefix, bool):
         return FieldError(field, f"prefix must be an integer, got {prefix}")
