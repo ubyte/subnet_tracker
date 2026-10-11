@@ -15,6 +15,7 @@ PREFIX_V4 = range(8, 33)
 PREFIX_V6 = range(16, 129)
 MAX_GROUP_NAME = 100
 MAX_TAG_NAME = 50
+MAX_RESOLVER_NAME = 100
 
 GroupId = NewType("GroupId", int)
 BatchId = NewType("BatchId", int)
