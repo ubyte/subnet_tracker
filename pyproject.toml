@@ -34,7 +34,7 @@ src = ["src", "tests"]
 select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "C4", "PIE", "RET", "PT", "RUF", "TID"]
 
 [tool.ruff.lint.flake8-bugbear]
-extend-immutable-calls = ["subnet_tracker.types.Seconds"]
+extend-immutable-calls = ["subnet_tracker.types.Seconds", "subnet_tracker.types.Bytes", "subnet_tracker.types.ReconnectMode", "subnet_tracker.core.settings.BrowserRefreshMode", "subnet_tracker.core.settings.ApplyStrategy"]
 
 [tool.mypy]
 strict = true
