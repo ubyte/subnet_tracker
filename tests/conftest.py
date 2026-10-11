@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from hypothesis import settings
 
+from cli_world import Cli, make_cli
 from db_rows import seed
 from subnet_tracker.core.db import connect, migrate
 
@@ -26,6 +27,11 @@ def db(tmp_path: Path) -> Iterator[sqlite3.Connection]:
 def seeded_db(db: sqlite3.Connection) -> sqlite3.Connection:
     seed(db)
     return db
+
+
+@pytest.fixture
+def cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Cli:
+    return make_cli(tmp_path, capsys)
 
 
 @pytest.fixture
