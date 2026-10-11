@@ -3,9 +3,10 @@ import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from subnet_tracker.core.addresses import NameResolution, answer_times
+from subnet_tracker.core.addresses import NameResolution, answer_times, delete_expired_sightings
 from subnet_tracker.core.db import transaction
 from subnet_tracker.core.events import EventKind, NewEvent, record_events
+from subnet_tracker.core.settings_store import load_settings
 from subnet_tracker.types import DomainId, DomainName, IPAddress, NameId, ResolverId, ResolveStatus, Timestamp
 
 # A status that does not set answered_at or succeeded_at keeps the previous one. requested_at belongs to Resolve now.
@@ -24,6 +25,11 @@ _SIGHTING = "INSERT INTO sightings (address_id, resolver_id, first_seen_at, last
 @dataclass(frozen=True, slots=True)
 class Recorded:
     addresses_new: int
+
+
+@dataclass(frozen=True, slots=True)
+class Expired:
+    addresses: int
 
 
 def _names(conn: sqlite3.Connection, ids: Sequence[NameId]) -> dict[NameId, tuple[DomainId, DomainName]]:
@@ -83,3 +89,16 @@ def record_resolutions(conn: sqlite3.Connection, results: Sequence[NameResolutio
         if events:
             record_events(conn, events, now)
     return Recorded(len(events))
+
+
+# The age is routes.retention from the pair's answered_at. A resolve run's addresses_expired is the caller's to add.
+def expire_addresses(conn: sqlite3.Connection, actor: str, now: Timestamp) -> Expired:
+    with transaction(conn):
+        removed = delete_expired_sightings(conn, load_settings(conn).routes.retention)
+        if removed:
+            record_events(
+                conn,
+                [NewEvent(EventKind.ADDRESS_EXPIRED, actor, item.domain_id, item.name, {"ip": str(item.ip), "resolver_id": item.resolver_id, "resolver": item.resolver}) for item in removed],
+                now,
+            )
+    return Expired(len(removed))
