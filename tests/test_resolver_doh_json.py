@@ -141,7 +141,7 @@ def test_an_error_code_still_checks_the_question() -> None:
         [record("example.com", True, "192.0.2.1")],
         [record("example.com", A, 3221225985)],
         [record("example.com", A, "192.0.2.1", ttl=-1)],
-        [record("example.com", A, "192.0.2.1", ttl=2**31)],
+        [record("example.com", A, "192.0.2.1", ttl=2**32)],
         [record("example.com", A, "192.0.2.1", ttl="300")],
         [record("example.com", A, "192.0.2.1", ttl=False)],
         [record("example.com", A, "192.0.2.1", ttl=1.5)],
@@ -179,6 +179,11 @@ def test_invalid_addresses_reject_the_answer(qtype: QueryType, data: str) -> Non
 def test_repeated_addresses_collapse_in_answer_order() -> None:
     answer = [record(NAME, A, "192.0.2.2"), record(NAME, A, "192.0.2.1"), record(NAME, A, "192.0.2.2")]
     assert parse(answer) == QueryResult(S.OK, ips("192.0.2.2", "192.0.2.1"), ttl=Seconds(300))
+
+
+@pytest.mark.parametrize("ttl", [2**31, 2**32 - 1])
+def test_a_32_bit_ttl_is_kept(ttl: int) -> None:
+    assert parse([record(NAME, A, "192.0.2.1", ttl=ttl)]) == QueryResult(S.OK, ips("192.0.2.1"), ttl=Seconds(ttl))
 
 
 def test_the_ttl_is_the_smallest_of_the_used_records() -> None:
