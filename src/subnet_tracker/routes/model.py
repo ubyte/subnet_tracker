@@ -153,6 +153,9 @@ class BudgetWarning:
         return f"IPv{self.version} route budget {self.limit} is unreachable, at least {self.routes} routes"
 
 
+type RouteWarning = PlanWarning | BudgetWarning
+
+
 @dataclass(frozen=True, slots=True)
 class AddressSource:
     address_id: AddressId
@@ -204,7 +207,7 @@ class PlanStats:
 class RoutePlan:
     routes: tuple[Route, ...]
     stats: PlanStats
-    warnings: tuple[PlanWarning | BudgetWarning, ...]
+    warnings: tuple[RouteWarning, ...]
 
 
 def route_order(route: Route) -> tuple[int, int, int]:
