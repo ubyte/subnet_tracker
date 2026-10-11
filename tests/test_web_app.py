@@ -25,7 +25,7 @@ def client(app: Flask) -> FlaskClient:
 
 def test_the_main_page_is_streamed_html_from_the_base_template(client: FlaskClient) -> None:
     response = client.get("/")
-    assert (response.status_code, response.mimetype, response.charset) == (200, "text/html", "utf-8")
+    assert (response.status_code, response.mimetype, response.mimetype_params.get("charset")) == (200, "text/html", "utf-8")
     assert response.is_streamed
     assert response.text.startswith("<!doctype html>")
     assert "<title>subnet-tracker</title>" in response.text
@@ -42,7 +42,9 @@ def test_the_main_page_is_gzipped_when_the_client_accepts_it(client: FlaskClient
 
 def test_the_head_is_sent_as_a_block_of_its_own(client: FlaskClient) -> None:
     response = client.get("/", headers=GZIP, buffered=False)
-    first = gunzip_stream().decompress(next(iter(response.response))).decode()
+    chunk = next(iter(response.response))
+    assert isinstance(chunk, bytes)
+    first = gunzip_stream().decompress(chunk).decode()
     response.close()
     assert first.startswith("<!doctype html>")
     assert first.rstrip().endswith("</head>")
