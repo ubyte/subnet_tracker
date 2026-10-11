@@ -2,7 +2,51 @@ from ipaddress import ip_address, ip_network
 
 import pytest
 
-from subnet_tracker.types import Bytes, ParseError, ParseResult, Seconds, format_duration, format_size, parse_duration, parse_ip_range, parse_size, zone_error
+from subnet_tracker.types import (
+    PREFIX_V4,
+    PREFIX_V6,
+    Bytes,
+    FieldError,
+    ParseError,
+    ParseResult,
+    Seconds,
+    check_prefix,
+    format_duration,
+    format_size,
+    one_line_text,
+    parse_duration,
+    parse_ip_range,
+    parse_size,
+    zone_error,
+)
+
+LINE_BREAKS = ["\n", "\r", "\r\n", "\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"]
+
+
+@pytest.mark.parametrize("brk", LINE_BREAKS)
+def test_line_breaks_are_what_splitlines_splits_on(brk: str) -> None:
+    assert len(f"a{brk}b".splitlines()) == 2
+
+
+@pytest.mark.parametrize("brk", LINE_BREAKS)
+@pytest.mark.parametrize("template", ["a{}b", "{}a", "a{}", "  a {} "])
+def test_one_line_text_rejects_line_breaks_anywhere(brk: str, template: str) -> None:
+    assert one_line_text("comment", template.format(brk)) == FieldError("comment", "line breaks are not allowed")
+
+
+@pytest.mark.parametrize(("text", "value"), [("", ""), ("   ", ""), ("  static content\t", "static content"), ("a  b", "a  b"), ("\x1f a", "a"), ("тест", "тест")])
+def test_one_line_text_trims_edges(text: str, value: str) -> None:
+    assert one_line_text("comment", text) == value
+
+
+@pytest.mark.parametrize(("value", "limits"), [(None, PREFIX_V4), (8, PREFIX_V4), (32, PREFIX_V4), (16, PREFIX_V6), (128, PREFIX_V6)])
+def test_check_prefix_accepts_limits_and_inherit(value: int | None, limits: range) -> None:
+    assert check_prefix("prefix_v4", value, limits) is None
+
+
+@pytest.mark.parametrize(("value", "limits", "message"), [(7, PREFIX_V4, "8 to 32"), (33, PREFIX_V4, "8 to 32"), (15, PREFIX_V6, "16 to 128"), (129, PREFIX_V6, "16 to 128")])
+def test_check_prefix_rejects_out_of_range(value: int, limits: range, message: str) -> None:
+    assert check_prefix("prefix", value, limits) == FieldError("prefix", f"prefix /{value} is out of range, expected {message}")
 
 
 @pytest.mark.parametrize("text", ["10.0.0.0/8", "192.0.2.1", "2001:db8::/32", "fe80::1", "::/0"])
