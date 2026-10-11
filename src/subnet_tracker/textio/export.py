@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from subnet_tracker.textio.lines import DISABLED
-from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute
+from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute, network_order
 from subnet_tracker.textio.parse import FORMAT_VERSION
 from subnet_tracker.textio.tokens import quote, quoted
 from subnet_tracker.types import Timestamp, has_line_break
@@ -81,7 +81,7 @@ def _render(model: ExportFile) -> str:
         _section("[settings]", (f"{s.key} = {s.value}" for s in sorted(model.settings, key=lambda s: s.key))),
         *(_group(groups.get(name, ExportGroup(name)), sections.get(name, ())) for name in sorted(groups.keys() | sections.keys())),
         _section("[ungrouped]", (_domain(d, frozenset()) for d in ungrouped)),
-        _section("[routes]", map(_route, sorted(model.routes, key=lambda r: (r.network.version, int(r.network.network_address), r.network.prefixlen)))),
+        _section("[routes]", map(_route, sorted(model.routes, key=lambda r: network_order(r.network)))),
     ]
     if model.addresses is not None:
         blocks.append(["[addresses]", *map(_address, sorted(model.addresses, key=lambda a: (a.name, a.ip.version, int(a.ip), a.resolver)))])
