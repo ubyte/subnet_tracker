@@ -37,12 +37,28 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
     conn.execute("SAVEPOINT nested" if nested else "BEGIN IMMEDIATE")
     try:
         yield
+        conn.execute("RELEASE nested" if nested else "COMMIT")
     except BaseException:
         if conn.in_transaction:
             for sql in ("ROLLBACK TO nested", "RELEASE nested") if nested else ("ROLLBACK",):
                 conn.execute(sql)
         raise
-    conn.execute("RELEASE nested" if nested else "COMMIT")
+
+
+# Consistent reads without the write lock. Must not wrap writes: a deferred read transaction may fail to upgrade to a write one.
+@contextmanager
+def snapshot(conn: sqlite3.Connection) -> Iterator[None]:
+    if conn.in_transaction:
+        yield
+        return
+    conn.execute("BEGIN DEFERRED")
+    try:
+        yield
+        conn.execute("COMMIT")
+    except BaseException:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
 
 
 def parse_migrations(sources: Mapping[str, str]) -> tuple[Migration, ...]:

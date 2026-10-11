@@ -2,7 +2,7 @@ import sqlite3
 from collections.abc import Collection
 from dataclasses import dataclass, replace
 
-from subnet_tracker.core.db import transaction
+from subnet_tracker.core.db import snapshot, transaction
 from subnet_tracker.core.edits import KEEP, Keep, edit_columns, prefixes_error
 from subnet_tracker.core.memberships import Membership, SetChange, edit_memberships
 from subnet_tracker.types import MAX_GROUP_NAME, DomainId, FieldError, GroupId, Timestamp, one_line_name, one_line_text
@@ -128,8 +128,9 @@ def delete_group(conn: sqlite3.Connection, group_id: GroupId, with_members: bool
 
 
 def list_groups(conn: sqlite3.Connection) -> tuple[GroupRow, ...]:
-    no_group = (conn.execute(f"SELECT count(*) FROM {table} WHERE id NOT IN (SELECT {member} FROM {links})").fetchone()[0] for table, links, member in _MEMBERS)
-    rows = conn.execute(f"SELECT g.*, {_COUNTS} FROM groups g ORDER BY g.name")
+    with snapshot(conn):
+        no_group = [conn.execute(f"SELECT count(*) FROM {table} WHERE id NOT IN (SELECT {member} FROM {links})").fetchone()[0] for table, links, member in _MEMBERS]
+        rows = conn.execute(f"SELECT g.*, {_COUNTS} FROM groups g ORDER BY g.name").fetchall()
     return (GroupRow(None, *no_group), *(GroupRow(_group(row), row["domains"], row["routes"]) for row in rows))
 
 

@@ -1,7 +1,7 @@
 import json
 import sqlite3
 
-from subnet_tracker.core.db import transaction
+from subnet_tracker.core.db import snapshot
 from subnet_tracker.routes.model import Domain, Group
 from subnet_tracker.routes.plan import routable
 from subnet_tracker.types import DomainId, GroupId
@@ -18,7 +18,7 @@ def routing_domains(conn: sqlite3.Connection) -> tuple[Domain, ...]:
 
 
 def routable_domains(conn: sqlite3.Connection) -> frozenset[DomainId]:
-    with transaction(conn):
+    with snapshot(conn):
         groups = {g.id: g for g in routing_groups(conn)}
         domains = routing_domains(conn)
     return frozenset(d.id for d in domains if routable(d.enabled, d.groups, groups))
