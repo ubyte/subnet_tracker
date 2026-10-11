@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from subnet_tracker.discovery.parse import Network
-from subnet_tracker.types import DomainName
+from subnet_tracker.types import DomainName, IPAddress, Timestamp
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,3 +57,57 @@ class ImportFile:
     domains: tuple[DomainLine, ...] = ()
     routes: tuple[RouteLine, ...] = ()
     duplicates: tuple[DuplicateLine, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ExportSetting:
+    key: str
+    # the registry's text form, not the JSON stored in settings.value
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExportGroup:
+    name: str
+    description: str = ""
+    prefix_v4: int | None = None
+    prefix_v6: int | None = None
+    enabled: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class ExportDomain:
+    name: DomainName
+    groups: frozenset[str] = frozenset()
+    tags: frozenset[str] = frozenset()
+    prefix_v4: int | None = None
+    prefix_v6: int | None = None
+    enabled: bool = True
+    comment: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ExportRoute:
+    network: Network
+    groups: frozenset[str] = frozenset()
+    enabled: bool = True
+    comment: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ExportAddress:
+    name: DomainName
+    ip: IPAddress
+    resolver: str
+    first_seen: Timestamp
+    last_seen: Timestamp
+
+
+@dataclass(frozen=True, slots=True)
+class ExportFile:
+    settings: tuple[ExportSetting, ...] = ()
+    groups: tuple[ExportGroup, ...] = ()
+    domains: tuple[ExportDomain, ...] = ()
+    routes: tuple[ExportRoute, ...] = ()
+    # None without --with-addresses
+    addresses: tuple[ExportAddress, ...] | None = None

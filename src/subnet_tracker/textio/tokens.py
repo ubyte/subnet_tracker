@@ -5,8 +5,11 @@ from subnet_tracker.discovery.parse import Rejected
 
 QUOTED = r'"((?:[^"\\]|\\.)*)"'
 SIGILS = "#@"
-_WORD = re.compile(rf'(?:([{SIGILS}]){QUOTED}|([^\s";]+))(?=[\s;]|$)')
+_BARE = r'[^\s";]+'
+_WORD = re.compile(rf"(?:([{SIGILS}]){QUOTED}|({_BARE}))(?=[\s;]|$)")
+_BARE_WORD = re.compile(_BARE)
 _ESCAPE = re.compile(r"\\(.)")
+_NEEDS_ESCAPE = re.compile(r'(["\\])')
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +27,14 @@ class Tokens:
 
 def unescape(quoted: str) -> str:
     return _ESCAPE.sub(r"\1", quoted)
+
+
+def quoted(text: str) -> str:
+    return '"' + _NEEDS_ESCAPE.sub(r"\\\1", text) + '"'
+
+
+def quote(text: str) -> str:
+    return text if _BARE_WORD.fullmatch(text) else quoted(text)
 
 
 def _word(m: re.Match[str]) -> Word:
