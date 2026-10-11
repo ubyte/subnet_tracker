@@ -1,12 +1,10 @@
 import json
-import sqlite3
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields, replace
 from enum import StrEnum, auto
 from typing import Any
 
 from subnet_tracker.config import IPNetwork
-from subnet_tracker.core.db import transaction
 from subnet_tracker.core.setting_codecs import DECIMAL, DOMAINS, DURATION, FLAG, INTEGER, NETWORKS, SIZE, TEXT, Codec, Validate, accept, at_least, choice_codec, printable_ascii, ratio, within
 from subnet_tracker.types import PREFIX_V4, PREFIX_V6, Bytes, ReconnectMode, Seconds, Timestamp, format_duration, format_size, parse_duration, parse_size
 
@@ -144,6 +142,12 @@ class SettingValue:
 
 
 @dataclass(frozen=True, slots=True)
+class StoredSetting:
+    value: str
+    updated_at: Timestamp
+
+
+@dataclass(frozen=True, slots=True)
 class SettingState:
     key: str
     value: str
@@ -230,52 +234,26 @@ def _settings(values: Mapping[str, object]) -> Settings:
     return Settings(**{f.name: section(f.name) for f in fields(_DEFAULTS)})
 
 
-def _state[T](setting: Setting[T], row: sqlite3.Row | None) -> SettingState:
+def _state[T](setting: Setting[T], stored: StoredSetting | None) -> SettingState:
     default = setting.format(setting.default)
-    if row is None:
+    if stored is None:
         return SettingState(setting.key, default, default, None)
-    return SettingState(setting.key, setting.format(_decoded(setting, row["value"])), default, Timestamp(row["updated_at"]))
+    return SettingState(setting.key, setting.format(_decoded(setting, stored.value)), default, stored.updated_at)
 
 
-def _stored(conn: sqlite3.Connection) -> dict[str, sqlite3.Row]:
-    return {row["key"]: row for row in conn.execute("SELECT key, value, updated_at FROM settings") if row["key"] in _REGISTRY}
+def check_key(key: str) -> SettingError | None:
+    return None if key in _REGISTRY else _unknown(key)
 
 
-def load_settings(conn: sqlite3.Connection) -> Settings:
-    return _settings({key: _decoded(_REGISTRY[key], row["value"]) for key, row in _stored(conn).items()})
+def settings_from(stored: Mapping[str, StoredSetting]) -> Settings:
+    return _settings({key: _decoded(setting, s.value) for key, s in stored.items() if (setting := _REGISTRY.get(key)) is not None})
 
 
-def list_settings(conn: sqlite3.Connection) -> tuple[SettingState, ...]:
-    stored = _stored(conn)
+def setting_states(stored: Mapping[str, StoredSetting]) -> tuple[SettingState, ...]:
     return tuple(_state(setting, stored.get(key)) for key, setting in _REGISTRY.items())
 
 
-def get_setting(conn: sqlite3.Connection, key: str) -> SettingState | SettingError:
+def setting_state(key: str, stored: StoredSetting | None) -> SettingState | SettingError:
     if (setting := _REGISTRY.get(key)) is None:
         return _unknown(key)
-    return _state(setting, conn.execute("SELECT value, updated_at FROM settings WHERE key = ?", (key,)).fetchone())
-
-
-_UPSERT = "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
-
-
-def save_setting(conn: sqlite3.Connection, value: SettingValue, now: Timestamp) -> None:
-    if value.is_default:
-        conn.execute("DELETE FROM settings WHERE key = ?", (value.key,))
-    else:
-        conn.execute(_UPSERT, (value.key, value.json, now))
-
-
-def set_setting(conn: sqlite3.Connection, key: str, text: str, now: Timestamp) -> SettingValue | SettingError:
-    value = parse_setting(key, text)
-    if isinstance(value, SettingValue):
-        with transaction(conn):
-            save_setting(conn, value, now)
-    return value
-
-
-def reset_setting(conn: sqlite3.Connection, key: str) -> SettingError | None:
-    if key not in _REGISTRY:
-        return _unknown(key)
-    conn.execute("DELETE FROM settings WHERE key = ?", (key,))
-    return None
+    return _state(setting, stored)
