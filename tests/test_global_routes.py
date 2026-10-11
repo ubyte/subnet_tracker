@@ -23,14 +23,15 @@ from subnet_tracker.core.global_routes import (
     get_global_route,
     global_route_network,
     list_global_routes,
-    server_address_error,
 )
 from subnet_tracker.core.groups import Group, GroupRow, delete_group, list_groups
 from subnet_tracker.core.memberships import SetChange
+from subnet_tracker.routes.exclusions import server_address_error
 from subnet_tracker.types import FieldError, GlobalRouteId, GroupId, IPAddress, Timestamp
 
 LATER = Timestamp(NOW + 10)
 SERVERS = (ip_address("203.0.113.10"), ip_address("2a01:4f8:5::10"))
+MAPPED = FieldError("cidr", "IPv4-mapped addresses are not routable, use the IPv4 form")
 
 
 def make_route(db: sqlite3.Connection, cidr: str, *groups: Group, comment: str = "", enabled: bool = True) -> GlobalRoute:
@@ -100,6 +101,8 @@ def test_largest_network_that_splits_off_the_server_address_is_allowed(addresses
         ("fe80::1%eth0", FieldError("cidr", "zone index is not routable")),
         ("203.0.113.10", FieldError("cidr", "covers the server address 203.0.113.10")),
         ("2a01:4f8:5::/64", FieldError("cidr", "covers the server address 2a01:4f8:5::10")),
+        ("::ffff:203.0.113.10", MAPPED),
+        ("::ffff:192.0.2.0/120", MAPPED),
     ],
 )
 def test_global_route_network_is_normalized_and_checked(text: str, result: IPv4Network | IPv6Network | FieldError) -> None:
@@ -109,6 +112,13 @@ def test_global_route_network_is_normalized_and_checked(text: str, result: IPv4N
 def test_checked_route_edit_normalizes_and_keeps_unmentioned_fields() -> None:
     assert checked_route_edit(GlobalRouteEdit(cidr="192.0.2.7/24", comment=" LAN "), SERVERS) == GlobalRouteEdit(cidr="192.0.2.0/24", comment="LAN", enabled=KEEP)
     assert checked_route_edit(GlobalRouteEdit(), SERVERS) == GlobalRouteEdit()
+
+
+def test_checked_route_edit_skips_the_server_check_for_the_current_network() -> None:
+    servers = (ip_address("192.0.2.1"),)
+    assert checked_route_edit(GlobalRouteEdit(cidr="192.0.2.9/24"), servers, IPv4Network("192.0.2.0/24")) == GlobalRouteEdit(cidr="192.0.2.0/24")
+    assert checked_route_edit(GlobalRouteEdit(cidr="192.0.2.9/25"), servers, IPv4Network("192.0.2.0/24")) == FieldError("cidr", "covers the server address 192.0.2.1")
+    assert checked_route_edit(GlobalRouteEdit(cidr="::ffff:192.0.2.0/120"), servers, IPv6Network("::ffff:192.0.2.0/120")) == MAPPED
 
 
 def test_create_route_stores_normalized_cidr_and_family(db: sqlite3.Connection) -> None:
@@ -143,6 +153,8 @@ def test_unknown_route_is_not_found(db: sqlite3.Connection) -> None:
         (NewGlobalRoute("203.0.0.0/8"), FieldError("cidr", "covers the server address 203.0.113.10")),
         (NewGlobalRoute("2a01:4f8:5::10"), FieldError("cidr", "covers the server address 2a01:4f8:5::10")),
         (NewGlobalRoute("192.0.2.0/24", "two\nlines"), FieldError("comment", "line breaks are not allowed")),
+        (NewGlobalRoute("::ffff:192.0.2.0/120"), MAPPED),
+        (NewGlobalRoute("::ffff:0:0/96"), MAPPED),
     ],
 )
 def test_invalid_route_is_rejected(db: sqlite3.Connection, route: NewGlobalRoute, error: FieldError) -> None:
@@ -153,6 +165,11 @@ def test_invalid_route_is_rejected(db: sqlite3.Connection, route: NewGlobalRoute
 def test_routes_bypass_builtin_exclusions_and_need_no_server_addresses(db: sqlite3.Connection) -> None:
     assert isinstance(create_global_route(db, NewGlobalRoute("10.8.0.0/24"), SERVERS, NOW), GlobalRoute)
     assert isinstance(create_global_route(db, NewGlobalRoute("0.0.0.0/0"), (), NOW), GlobalRoute)
+
+
+def test_networks_covering_the_ipv4_mapped_range_are_allowed(db: sqlite3.Connection) -> None:
+    assert isinstance(create_global_route(db, NewGlobalRoute("::/0"), (), NOW), GlobalRoute)
+    assert isinstance(create_global_route(db, NewGlobalRoute("::fffe:0:0/95"), (), NOW), GlobalRoute)
 
 
 def test_duplicate_cidr_is_rejected_after_normalization(db: sqlite3.Connection) -> None:
@@ -183,7 +200,9 @@ def test_empty_edit_returns_route_unchanged(db: sqlite3.Connection) -> None:
 
 
 def test_edit_of_unknown_route_returns_none(db: sqlite3.Connection) -> None:
+    make_route(db, "192.0.2.0/24")
     assert edit_global_route(db, GlobalRouteId(99), GlobalRouteEdit(enabled=False), SERVERS, LATER) is None
+    assert edit_global_route(db, GlobalRouteId(99), GlobalRouteEdit(cidr="192.0.2.0/24"), SERVERS, LATER) is None
 
 
 @pytest.mark.parametrize(
@@ -194,6 +213,7 @@ def test_edit_of_unknown_route_returns_none(db: sqlite3.Connection) -> None:
         (GlobalRouteEdit(cidr=""), FieldError("cidr", "not an address or CIDR")),
         (GlobalRouteEdit(comment="a\u2028b"), FieldError("comment", "line breaks are not allowed")),
         (GlobalRouteEdit(cidr="198.51.100.7/24"), FieldError("cidr", "global route '198.51.100.0/24' already exists")),
+        (GlobalRouteEdit(cidr="::ffff:0:0/96"), MAPPED),
     ],
 )
 def test_invalid_edit_is_rejected_and_changes_nothing(db: sqlite3.Connection, edit: GlobalRouteEdit, error: FieldError) -> None:
@@ -215,6 +235,13 @@ def test_edit_without_cidr_does_not_recheck_server_addresses(db: sqlite3.Connect
     edited = edit_global_route(db, route.id, GlobalRouteEdit(comment="kept", enabled=True), (ip_address("192.0.2.1"),), LATER)
     assert isinstance(edited, GlobalRoute)
     assert edited.comment == "kept"
+
+
+def test_resending_the_same_cidr_does_not_recheck_server_addresses(db: sqlite3.Connection) -> None:
+    route = make_route(db, "192.0.2.0/24")
+    edited = edit_global_route(db, route.id, GlobalRouteEdit(cidr=" 192.0.2.5/24", comment="kept"), (ip_address("192.0.2.1"),), LATER)
+    assert isinstance(edited, GlobalRoute)
+    assert (edited.network, edited.comment) == (route.network, "kept")
 
 
 def test_edit_route_groups_touches_only_changed_routes(db: sqlite3.Connection) -> None:

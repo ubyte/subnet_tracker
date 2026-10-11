@@ -7,11 +7,14 @@ from domains_world import NOW, count, paste
 from subnet_tracker.core.db import transaction
 from subnet_tracker.core.edits import KEEP
 from subnet_tracker.core.resolvers import (
+    DEFAULT_RESOLVERS,
+    MAX_QPS,
     DeletedResolver,
     NewResolver,
     Resolver,
     ResolverEdit,
     checked_resolver_edit,
+    create_default_resolvers,
     create_resolver,
     delete_resolver,
     edit_resolver,
@@ -71,9 +74,11 @@ def test_unknown_resolver_is_not_found(db: sqlite3.Connection) -> None:
         (NewResolver("system", ResolverKind.SYSTEM, "udp://1.1.1.1"), FieldError("endpoint", "system resolvers have no endpoint")),
         (NewResolver("Cloudflare", ResolverKind.DNS), FieldError("endpoint", "dns resolvers need an endpoint")),
         (NewResolver("DoH", ResolverKind.DOH, "http://dns.google/resolve"), FieldError("endpoint", "invalid endpoint 'http://dns.google/resolve', expected an https:// URL")),
-        (NewResolver("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1", max_qps=0), FieldError("max_qps", "must be a positive integer")),
-        (NewResolver("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1", max_qps=-5), FieldError("max_qps", "must be a positive integer")),
-        (NewResolver("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1", max_qps=True), FieldError("max_qps", "must be a positive integer")),
+        (NewResolver("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1", max_qps=0), FieldError("max_qps", f"must be 1 to {MAX_QPS}")),
+        (NewResolver("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1", max_qps=-5), FieldError("max_qps", f"must be 1 to {MAX_QPS}")),
+        (NewResolver("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1", max_qps=True), FieldError("max_qps", f"must be 1 to {MAX_QPS}")),
+        (NewResolver("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1", max_qps=MAX_QPS + 1), FieldError("max_qps", f"must be 1 to {MAX_QPS}")),
+        (NewResolver("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1", max_qps=2**63), FieldError("max_qps", f"must be 1 to {MAX_QPS}")),
         (NewResolver("laptop", ResolverKind.AGENT), FieldError("kind", "agent resolvers are created with their agent")),
     ],
 )
@@ -84,6 +89,26 @@ def test_invalid_resolver_is_rejected(db: sqlite3.Connection, resolver: NewResol
 
 def test_resolver_name_of_max_length_is_accepted(db: sqlite3.Connection) -> None:
     assert make_resolver(db, NewResolver("x" * MAX_RESOLVER_NAME, ResolverKind.SYSTEM)).name == "x" * MAX_RESOLVER_NAME
+
+
+def test_max_qps_limits_are_accepted(db: sqlite3.Connection) -> None:
+    assert make_resolver(db, NewResolver("one", ResolverKind.SYSTEM, max_qps=1)).max_qps == 1
+    assert make_resolver(db, NewResolver("many", ResolverKind.SYSTEM, max_qps=MAX_QPS)).max_qps == MAX_QPS
+
+
+def test_default_resolvers_follow_the_first_install_table(db: sqlite3.Connection) -> None:
+    created = create_default_resolvers(db, NOW)
+    assert list_resolvers(db) == created
+    assert [(r.name, r.kind, r.endpoint, r.use_for_routes, r.max_qps, r.position) for r in created] == [
+        ("system", ResolverKind.SYSTEM, None, True, 50, 0),
+        ("Cloudflare", ResolverKind.DNS, "udp://1.1.1.1", True, 50, 1),
+        ("Google", ResolverKind.DNS, "udp://8.8.8.8", True, 50, 2),
+        ("Cloudflare v6", ResolverKind.DNS, "udp://[2606:4700:4700::1111]", True, 50, 3),
+        ("Cloudflare DoH", ResolverKind.DOH, "https://cloudflare-dns.com/dns-query", False, 50, 4),
+        ("Browser (Cloudflare)", ResolverKind.BROWSER, "https://cloudflare-dns.com/dns-query", True, 50, 5),
+    ]
+    assert [r.name for r in created] == [r.name for r in DEFAULT_RESOLVERS]
+    assert not db.in_transaction
 
 
 def test_duplicate_resolver_name_is_rejected_after_trimming(db: sqlite3.Connection) -> None:
@@ -135,7 +160,7 @@ def test_edit_of_unknown_resolver_returns_none(db: sqlite3.Connection) -> None:
         ),
         (ResolverKind.DOH, "https://dns.google/resolve", ResolverEdit(endpoint=None), FieldError("endpoint", "doh resolvers need an endpoint")),
         (ResolverKind.DNS, "udp://1.1.1.1", ResolverEdit(name=" "), FieldError("name", f"must be 1 to {MAX_RESOLVER_NAME} characters long")),
-        (ResolverKind.DNS, "udp://1.1.1.1", ResolverEdit(use_for_routes=False, max_qps=0), FieldError("max_qps", "must be a positive integer")),
+        (ResolverKind.DNS, "udp://1.1.1.1", ResolverEdit(use_for_routes=False, max_qps=0), FieldError("max_qps", f"must be 1 to {MAX_QPS}")),
     ],
 )
 def test_invalid_edit_is_checked_against_the_stored_kind_and_changes_nothing(db: sqlite3.Connection, kind: ResolverKind, endpoint: str | None, edit: ResolverEdit, error: FieldError) -> None:

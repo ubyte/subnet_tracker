@@ -7,8 +7,8 @@ from hypothesis import strategies as st
 
 from routes_world import World
 from subnet_tracker.config import IPNetwork
-from subnet_tracker.routes.model import PlanSettings, RoutePlan
-from subnet_tracker.types import RouteKind
+from subnet_tracker.routes.model import GlobalRouteWarning, PlanSettings, RoutePlan
+from subnet_tracker.types import RouteKind, network_order
 
 type Interval = tuple[int, int]
 
@@ -93,3 +93,16 @@ def test_every_address_outside_exclusions_is_routed_with_provenance(nets: list[t
         if any(ip in e for e in exclude):
             continue
         assert any(ip in p.network and ip in {a.ip for a in p.addresses} for r in plan.routes for p in r.parts)
+
+
+@given(st.lists(st.tuples(offsets, st.integers(14, 32)), max_size=8), st.lists(offsets, max_size=3))
+def test_global_routes_holding_a_server_address_are_exactly_the_dropped_ones(routes: list[tuple[int, int]], servers: list[int]) -> None:
+    w = World()
+    for offset, prefix in routes:
+        w.global_route(str(network(offset, prefix)))
+    server_ips = tuple(IPv4Address(BASE + s) for s in servers)
+    plan = w.plan(PlanSettings(server_addresses=server_ips))
+    holding = {r.id for r in w.global_routes if any(ip in r.network for ip in server_ips)}
+    assert {r.global_route_id for r in plan.routes} == {r.id for r in w.global_routes} - holding
+    assert [x.global_route_id for x in plan.warnings if isinstance(x, GlobalRouteWarning)] == sorted(holding, key=lambda i: (network_order(w.global_routes[i - 1].network), i))
+    assert len(plan.warnings) == len(holding)

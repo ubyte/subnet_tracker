@@ -6,7 +6,7 @@ from settings_samples import SAMPLES
 from subnet_tracker.discovery.parse import Network
 from subnet_tracker.discovery.www import domain_names, pair_name
 from subnet_tracker.textio.model import ExportAddress, ExportDomain, ExportFile, ExportGroup, ExportRoute, ExportSetting
-from subnet_tracker.types import MAX_GROUP_NAME, MAX_TAG_NAME, PREFIX_V4, PREFIX_V6, DomainName, Timestamp
+from subnet_tracker.types import MAX_GROUP_NAME, MAX_TAG_NAME, PREFIX_V4, PREFIX_V6, DomainName, FieldError, Timestamp, route_network
 
 # everything str.splitlines() breaks on: names, descriptions and comments never contain these (design section 12)
 LINE_BREAKS = "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"
@@ -47,7 +47,7 @@ def _network(address: st.SearchStrategy[str], bits: int) -> st.SearchStrategy[Ne
 _labels = st.lists(st.from_regex(r"[a-z0-9]{1,8}", fullmatch=True), min_size=1, max_size=3)
 _domain_name = st.builds(lambda www, labels, tld: DomainName(www + ".".join([*labels, tld])), st.sampled_from(["", "www.", "www.www."]), _labels, st.from_regex(r"[a-z]{2,6}", fullmatch=True))
 _timestamps = st.integers(0, 2**33).map(Timestamp)
-_networks = _network(st.ip_addresses(v=4).map(str), 32) | _network(st.ip_addresses(v=6).map(str), 128)
+_networks = (_network(st.ip_addresses(v=4).map(str), 32) | _network(st.ip_addresses(v=6).map(str), 128)).filter(lambda n: not isinstance(route_network("cidr", str(n)), FieldError))
 _settings = st.lists(st.builds(ExportSetting, st.from_regex(r"[a-z][a-z0-9_]{0,8}(\.[a-z0-9_]{1,8}){0,2}", fullmatch=True), trimmed_text()), max_size=3, unique_by=lambda s: s.key).map(tuple)
 _group_name = one_line_strings(1, MAX_GROUP_NAME)
 _tags = st.frozensets(one_line_strings(1, MAX_TAG_NAME), max_size=3)
