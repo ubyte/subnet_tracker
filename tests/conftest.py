@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 from hypothesis import settings
-from subnet_tracker.core.db import connect, migrate
 
 from db_rows import seed
+from subnet_tracker.core.db import connect, migrate
 
 settings.register_profile("default", deadline=None)
 settings.register_profile("ci", deadline=None, max_examples=500)

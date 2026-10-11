@@ -3,9 +3,9 @@ from contextlib import closing
 from pathlib import Path
 
 import pytest
-from subnet_tracker.core.db import Migration, MigrationError, apply_migrations, connect, load_migrations, migrate, parse_migrations, transaction
 
 from db_rows import tables
+from subnet_tracker.core.db import Migration, MigrationError, apply_migrations, connect, load_migrations, migrate, parse_migrations, transaction
 
 EXTRA = Migration(2, "extra", "CREATE TABLE extra (id INTEGER PRIMARY KEY) STRICT;")
 
