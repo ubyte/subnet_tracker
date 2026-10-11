@@ -622,6 +622,12 @@ CREATE INDEX events_domain ON events (domain_id, id);
 - Обратная сторона: адреса агента, который давно не выходил на связь, остаются в маршрутах. Поэтому главная страница предупреждает об отмеченных внешних резолверах, которые не обновлялись дольше `resolvers.stale_warning` (2 дня). Администратор может снять галочку или удалить резолвер.
 - Защита от резолвера, который внезапно отвечает NXDOMAIN или пустым ответом на всё (фильтрация, перехват, captive portal): если в прогоне у резолвера доля не-`ok` среди имён, которые в прошлый раз были `ok`, больше `resolve.unhealthy_ratio` (50%), резолвер помечается `healthy = 0`. Его не-`ok` ответы в этом прогоне обрабатываются как `error`. Проверка работает только при выборке от 20 имён. Для внешних резолверов прогоном считается сессия (раздел 6.5).
 
+Прогоны и `scheduler_state` пишет `core/resolve_runs.py`. Полный проход — строка `resolve_runs` с `trigger = timer` и поля `scheduler_state`: `full_run_id`, курсор `full_cursor_name_id`, `last_full_started_at`. Пока `full_run_id` задан, второй полный проход не открывается. Новый пора, когда прохода нет и `last_full_started_at` пуст или старше `resolve.interval` (возраст не меньше интервала). Закрытие ставит `finished_at` и обнуляет `full_run_id` и курсор; время старта остаётся. Запрошенный резолв (`manual`, `new_domains`) и сессия (`browser`, `agent`, со своим `resolver_id`) — отдельные строки `resolve_runs`.
+
+Модуль не открывает сокеты и не выбирает порцию. Вызывающий передаёт результаты и статистику резолверов. Результаты пишутся `record_resolutions` в той же транзакции, `addresses_new` растёт на число новых строк `addresses`. Счётчики `resolve_run_resolvers` складываются по порциям. `avg_ms` — целая средняя длительность: порция без суммы времён её не меняет; первая порция с суммой делит её на свои `queries`; следующая прибавляет сумму к `avg_ms * queries` сохранённой строки и делит на новое число `queries`. Сумму сообщают либо все порции резолвера в прогоне, либо ни одна. `healthy` хранится как 1, пока порция не передала иное. `addresses_expired` прибавляется отдельно, когда истечение относит удаления к прогону.
+
+`last_cleanup_at` пуст, пока чистки не было. Чистка пора, когда штамп пуст или не моложе суток (86400 с). `prune_resolve_runs` удаляет прогоны со `started_at` строго меньше границы хранения (как `events`) и их статистику. `tick` вызывает её и затем записывает штамп. Удаление текущего прогона обнуляет `full_run_id` по внешнему ключу и не меняет курсор.
+
 ### 6.5 Внешние резолверы: задания и результаты
 
 Браузер и агенты сами приходят за работой. Логика общая (`core/external.py`); различаются транспорт и аутентификация.
@@ -1592,7 +1598,7 @@ src/subnet_tracker/
   __main__.py
   config.py
   types.py    NewType, StrEnum, общие dataclass
-  core/       db.py, migrations/*.sql, domains.py, names.py, batches.py, groups.py, tags.py, resolvers.py, agents.py, external.py, global_routes.py, settings.py, setting_codecs.py, settings_store.py, events.py, requests.py, trigger.py, addresses.py, plan_store.py, web_devices.py
+  core/       db.py, migrations/*.sql, domains.py, names.py, batches.py, groups.py, tags.py, resolvers.py, agents.py, external.py, global_routes.py, settings.py, setting_codecs.py, settings_store.py, events.py, requests.py, trigger.py, addresses.py, resolve_runs.py, plan_store.py, web_devices.py
   core/services/  settings.py, ... — изменение, его события и запросы к tick одной транзакцией (раздел 5)
   resolver/   run.py, backends.py, classify.py, model.py, doh_json.py, browser_report.py, expire.py
   routes/     plan.py, budget.py, render.py
