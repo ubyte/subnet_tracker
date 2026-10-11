@@ -935,7 +935,7 @@ subnet-tracker db migrate
 # subnet-tracker export v1
 
 [settings]
-resolve.interval = 60m
+resolve.interval = 2h
 routes.default_prefix_v4 = 23
 
 [group "Video"]
@@ -1012,41 +1012,49 @@ management = "unix:/run/subnet-tracker/ovpn-server.sock"
 
 Таблица `settings` хранит JSON-значения по ключу. Тип, значение по умолчанию и проверку каждой настройки задаёт реестр в Python: `Setting[T]` с `parse` и `validate`. Сервисы получают один типизированный объект `Settings`. Ключ-значение выбран вместо таблицы со столбцом на каждую настройку, чтобы новая настройка не требовала миграции.
 
-| Ключ | По умолчанию | Назначение |
-|---|---|---|
-| `resolve.interval` | `60m` | Интервал полного прохода серверных резолверов. |
-| `resolve.timeout` | `3s` | Таймаут одного запроса. |
-| `resolve.concurrency` | `32` | Общий пул потоков. |
-| `resolve.unhealthy_ratio` | `0.5` | Порог для пометки резолвера нездоровым в прогоне. |
-| `resolvers.stale_warning` | `2d` | Предупреждать, если отмеченный внешний резолвер не обновлялся дольше. |
-| `browser.refresh_mode` | `auto` | `auto`, `button`, `off`. |
-| `browser.max_age` | `24h` | m для браузера: записи старше этого обновляются. |
-| `browser.batch` | `300` | n для браузера: доменов за одно открытие страницы. |
-| `browser.concurrency` | `6` | Одновременных DoH-запросов из браузера. |
-| `agent.max_age` | `60m` | m для агентов: записи старше этого отдаются агенту. |
-| `agent.batch` | `200` | n для агентов: доменов за один `poll`. |
-| `agent.poll_interval` | `60s` | Пауза между опросами в цикле, когда заданий нет. |
-| `agent.concurrency` | `8` | Параллельных резолвов в агенте. |
-| `agent.timeout` | `5s` | Таймаут одного резолва в агенте. |
-| `agent.offline_after` | `30m` | Агент считается неактивным, если молчит дольше. |
-| `routes.retention` | `4d` | Сколько держать адрес после исчезновения из ответов резолвера. |
-| `routes.default_prefix_v4` | `23` | Префикс по умолчанию. |
-| `routes.default_prefix_v6` | `48` | Префикс по умолчанию. |
-| `routes.push_ipv4` / `routes.push_ipv6` | `true` / `true` | Отдавать ли клиентам маршруты семейства. |
-| `routes.exclude` | `[]` | Дополнительные исключения. |
-| `routes.max_v4` / `routes.max_v6` | `1000` / `300` | Бюджет маршрутов. |
-| `routes.min_aggregate_prefix_v4` / `_v6` | `12` / `32` | Предел агрегации. |
-| `apply.strategy` | `reconnect` | `reconnect` или `none`. |
-| `apply.after_add` | `on_leave` | Режим переподключения после добавления из web UI: `on_leave`, `auto`, `now`. |
-| `apply.min_interval` | `60m` | Минимальный интервал между автоматическими переподключениями. |
-| `apply.idle_delay` | `30s` | Сколько ждать после последнего действия администратора в UI. |
-| `apply.leave_grace` | `5s` | Запас после закрытия страницы. |
-| `apply.reconnect_spread` | `2s` | Пауза между переподключениями клиентов. |
-| `discovery.timeout` | `10s` | Таймаут скачивания страницы. |
-| `discovery.max_bytes` | `5MB` | Лимит размера страницы. |
-| `discovery.user_agent` | браузерный UA | User-Agent при скачивании. |
-| `discovery.ignore` | `["w3.org", "schema.org", "ogp.me"]` | Домены, которые не предлагаются. |
-| `history.retention` | `90d` | Хранение `resolve_runs`, `apply_runs`, `events`. |
+| Ключ | По умолчанию | Допустимые значения | Назначение |
+|---|---|---|---|
+| `resolve.interval` | `1h` | длительность ≥ `1s` | Интервал полного прохода серверных резолверов. |
+| `resolve.timeout` | `3s` | длительность ≥ `1s` | Таймаут одного запроса. |
+| `resolve.concurrency` | `32` | 1–1024 | Общий пул потоков. |
+| `resolve.unhealthy_ratio` | `0.5` | доля, больше 0 и не больше 1 | Порог для пометки резолвера нездоровым в прогоне. |
+| `resolvers.stale_warning` | `2d` | длительность | Предупреждать, если отмеченный внешний резолвер не обновлялся дольше. |
+| `browser.refresh_mode` | `auto` | `auto`, `button`, `off` | Когда браузер обновляет адреса (раздел 6.6). |
+| `browser.max_age` | `1d` | длительность | m для браузера: записи старше этого обновляются. |
+| `browser.batch` | `300` | целое ≥ 1 | n для браузера: доменов за одно открытие страницы. |
+| `browser.concurrency` | `6` | 1–1024 | Одновременных DoH-запросов из браузера. |
+| `agent.max_age` | `1h` | длительность | m для агентов: записи старше этого отдаются агенту. |
+| `agent.batch` | `200` | целое ≥ 1 | n для агентов: доменов за один `poll`. |
+| `agent.poll_interval` | `1m` | длительность ≥ `1s` | Пауза между опросами в цикле, когда заданий нет. |
+| `agent.concurrency` | `8` | 1–1024 | Параллельных резолвов в агенте. |
+| `agent.timeout` | `5s` | длительность ≥ `1s` | Таймаут одного резолва в агенте. |
+| `agent.offline_after` | `30m` | длительность | Агент считается неактивным, если молчит дольше. |
+| `routes.retention` | `4d` | длительность | Сколько держать адрес после исчезновения из ответов резолвера. |
+| `routes.default_prefix_v4` | `23` | 1–32 | Префикс по умолчанию. |
+| `routes.default_prefix_v6` | `48` | 1–128 | Префикс по умолчанию. |
+| `routes.push_ipv4` / `routes.push_ipv6` | `true` / `true` | `true`, `false` | Отдавать ли клиентам маршруты семейства. |
+| `routes.exclude` | пусто | список CIDR обоих семейств без битов хоста; адрес без префикса — `/32` или `/128` | Дополнительные исключения. |
+| `routes.max_v4` / `routes.max_v6` | `1000` / `300` | целое ≥ 1 | Бюджет маршрутов. |
+| `routes.min_aggregate_prefix_v4` / `routes.min_aggregate_prefix_v6` | `12` / `32` | 1–32 / 1–128 | Предел агрегации. |
+| `apply.strategy` | `reconnect` | `reconnect`, `none` | Переподключать ли клиентов после записи файла (раздел 8.5). |
+| `apply.after_add` | `on_leave` | `on_leave`, `auto`, `now` | Режим переподключения после добавления из web UI. |
+| `apply.min_interval` | `1h` | длительность | Минимальный интервал между автоматическими переподключениями. |
+| `apply.idle_delay` | `30s` | длительность | Сколько ждать после последнего действия администратора в UI. |
+| `apply.leave_grace` | `5s` | длительность | Запас после закрытия страницы. |
+| `apply.reconnect_spread` | `2s` | длительность | Пауза между переподключениями клиентов. |
+| `discovery.timeout` | `10s` | длительность ≥ `1s` | Таймаут скачивания страницы. |
+| `discovery.max_bytes` | `5MB` | размер ≥ `1B` | Лимит размера страницы. |
+| `discovery.user_agent` | UA Chrome для Windows | 1–512 печатных символов ASCII | User-Agent при скачивании. |
+| `discovery.ignore` | `w3.org, schema.org, ogp.me` | список доменных имён; IDN хранится в punycode, регистр не важен | Домены, которые не предлагаются. |
+| `history.retention` | `90d` | длительность | Хранение `resolve_runs`, `apply_runs`, `events`. |
+
+Значения вводятся и показываются в текстовой форме: в UI, в CLI (`settings get`, `settings set KEY VALUE`) и в секции `[settings]` экспорта. В `settings.value` хранится JSON:
+- длительность — `<число><s|m|h|d>` (без знака, допустим `0s`), JSON-строка; показывается в наибольшей единице без остатка: `60m` показывается как `1h`, `90m` — как `90m`;
+- размер — `<число><B|KB|MB|GB>` с множителем 1024, JSON-строка, показывается так же;
+- целое и доля (через точку) — JSON-число, флаг — JSON `true` или `false`, вариант — JSON-строка;
+- список — через запятые или пробелы, пустая строка — пустой список; хранится JSON-массивом строк, повторы убираются с сохранением порядка, показывается через `, `.
+
+Строка хранится только для значения, отличного от умолчания: `set` со значением по умолчанию удаляет строку, как и `reset`, поэтому новое умолчание в следующей версии применяется ко всем, кто его не менял. Строки с ключами не из реестра (например, удалённой настройки) не читаются. Неверное хранимое значение известного ключа — ошибка с именем ключа; её исправляет `settings reset KEY`.
 
 Резолверы и агенты хранятся в своих таблицах и редактируются на странице Resolvers.
 
@@ -1186,15 +1194,15 @@ Add global route  CIDR [______________]  comment [______________]  group [— v]
 
 ```
 Settings                                                                                       [Save]
-Resolve      every [60m]  timeout [3s]  concurrency [32]  warn if an external resolver is silent [2d]
+Resolve      every [1h]  timeout [3s]  concurrency [32]  warn if an external resolver is silent [2d]
 Resolvers    used for routes: [x] system [x] Cloudflare [x] Google [x] Cloudflare v6 [ ] Cloudflare DoH
                               [x] Browser (CF) [x] laptop-alex [ ] office-pc
-Browser DNS  refresh (o) on page open ( ) by button ( ) off;  send [300] oldest names older than [24h]
-Agents       send [200] oldest names older than [60m] per poll; loop poll every [60s], concurrency [8],
+Browser DNS  refresh (o) on page open ( ) by button ( ) off;  send [300] oldest names older than [1d]
+Agents       send [200] oldest names older than [1h] per poll; loop poll every [1m], concurrency [8],
              timeout [5s], inactive after [30m]
 Routes       retention [4d]  default prefix v4 [23] v6 [48]  push IPv4 [x] IPv6 [x]
              budget v4 [1000] v6 [300]  extra exclusions [...]
-Apply        strategy [reconnect v]  after adding here [when I leave v]  automatic at most every [60m]
+Apply        strategy [reconnect v]  after adding here [when I leave v]  automatic at most every [1h]
              wait after my last action [30s]  after closing the page [5s]  spread [2s]
 Discovery    timeout [10s]  max size [5MB]  user agent [...]  ignore list [...]
 History      keep [90d]
